@@ -1,0 +1,219 @@
+import { describe, it, expect, vi } from "vitest";
+import type { ExecFn, ExecResult } from "../src/types.js";
+import { discoverProjects, discoverSchemes, discoverSimulators, discover } from "../src/discovery.js";
+import { autoSelect, findSimulator } from "../src/discovery.js";
+import type { DiscoveryResult, Simulator } from "../src/types.js";
+
+// ── Helper: create a mock exec ─────────────────────────────────────────────
+
+function mockExec(responses: Record<string, Partial<ExecResult>>): ExecFn {
+  return vi.fn(async (command: string, args: string[]) => {
+    const key = `${command} ${args.join(" ")}`;
+
+    // Find a matching response by prefix
+    for (const [pattern, response] of Object.entries(responses)) {
+      if (key.includes(pattern)) {
+        return { stdout: "", stderr: "", code: 0, killed: false, ...response };
+      }
+    }
+
+    return { stdout: "", stderr: "", code: 1, killed: false };
+  });
+}
+
+// ── discoverProjects ───────────────────────────────────────────────────────
+
+describe("discoverProjects", () => {
+  it("finds .xcodeproj and .xcworkspace files", async () => {
+    const exec = mockExec({
+      find: {
+        stdout: "/project/MyApp.xcworkspace\n/project/MyApp.xcodeproj\n",
+      },
+    });
+
+    const projects = await discoverProjects(exec, "/project");
+    expect(projects).toHaveLength(2);
+    // Workspaces should sort first
+    expect(projects[0].type).toBe("workspace");
+    expect(projects[1].type).toBe("project");
+  });
+
+  it("filters out Pods and swiftpm workspaces", async () => {
+    const exec = mockExec({
+      find: {
+        stdout: `/project/MyApp.xcodeproj
+/project/Pods/Pods.xcodeproj
+/project/.swiftpm/xcode/package.xcworkspace
+`,
+      },
+    });
+
+    const projects = await discoverProjects(exec, "/project");
+    expect(projects).toHaveLength(1);
+    expect(projects[0].path).toBe("/project/MyApp.xcodeproj");
+  });
+
+  it("returns empty when find fails", async () => {
+    const exec = mockExec({ find: { code: 1 } });
+    const projects = await discoverProjects(exec, "/project");
+    expect(projects).toEqual([]);
+  });
+});
+
+// ── discoverSchemes ────────────────────────────────────────────────────────
+
+describe("discoverSchemes", () => {
+  it("parses schemes from xcodebuild -list", async () => {
+    const exec = mockExec({
+      "-list": {
+        stdout: `Information about project "MyApp":
+    Targets:
+        MyApp
+
+    Schemes:
+        MyApp
+        MyAppTests
+`,
+      },
+    });
+
+    const schemes = await discoverSchemes(exec, "/project/MyApp.xcodeproj");
+    expect(schemes).toHaveLength(2);
+    expect(schemes[0].name).toBe("MyApp");
+    expect(schemes[1].name).toBe("MyAppTests");
+  });
+});
+
+// ── discoverSimulators ─────────────────────────────────────────────────────
+
+describe("discoverSimulators", () => {
+  it("parses simulator list", async () => {
+    const exec = mockExec({
+      simctl: {
+        stdout: JSON.stringify({
+          devices: {
+            "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
+              { udid: "UUID-1", name: "iPhone 16", state: "Shutdown", isAvailable: true },
+            ],
+          },
+        }),
+      },
+    });
+
+    const sims = await discoverSimulators(exec);
+    expect(sims).toHaveLength(1);
+    expect(sims[0].name).toBe("iPhone 16");
+  });
+
+  it("returns empty on failure", async () => {
+    const exec = mockExec({ simctl: { code: 1 } });
+    const sims = await discoverSimulators(exec);
+    expect(sims).toEqual([]);
+  });
+});
+
+// ── discover (full) ────────────────────────────────────────────────────────
+
+describe("discover", () => {
+  it("combines projects, schemes, and simulators", async () => {
+    const exec = mockExec({
+      find: { stdout: "/project/App.xcodeproj\n" },
+      "-list": {
+        stdout: `    Schemes:
+        App
+`,
+      },
+      simctl: {
+        stdout: JSON.stringify({
+          devices: {
+            "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
+              { udid: "UUID-1", name: "iPhone 16", state: "Booted", isAvailable: true },
+            ],
+          },
+        }),
+      },
+    });
+
+    const result = await discover(exec, "/project");
+    expect(result.projects).toHaveLength(1);
+    expect(result.schemes).toHaveLength(1);
+    expect(result.simulators).toHaveLength(1);
+  });
+});
+
+// ── autoSelect ─────────────────────────────────────────────────────────────
+
+describe("autoSelect", () => {
+  const discovery: DiscoveryResult = {
+    projects: [
+      { path: "/p/App.xcworkspace", type: "workspace" },
+      { path: "/p/App.xcodeproj", type: "project" },
+    ],
+    schemes: [
+      { name: "App", project: "/p/App.xcworkspace" },
+      { name: "AppTests", project: "/p/App.xcworkspace" },
+    ],
+    simulators: [],
+  };
+
+  it("selects first project and non-test scheme by default", () => {
+    const { project, scheme } = autoSelect(discovery);
+    expect(project?.type).toBe("workspace");
+    expect(scheme?.name).toBe("App");
+  });
+
+  it("selects preferred scheme when specified", () => {
+    const { scheme } = autoSelect(discovery, "AppTests");
+    expect(scheme?.name).toBe("AppTests");
+  });
+
+  it("falls back to first scheme if preferred not found", () => {
+    const { scheme } = autoSelect(discovery, "Nonexistent");
+    expect(scheme?.name).toBe("App");
+  });
+
+  it("returns empty for no projects", () => {
+    const { project, scheme } = autoSelect({ projects: [], schemes: [], simulators: [] });
+    expect(project).toBeUndefined();
+    expect(scheme).toBeUndefined();
+  });
+});
+
+// ── findSimulator ──────────────────────────────────────────────────────────
+
+describe("findSimulator", () => {
+  const simulators: Simulator[] = [
+    { udid: "UUID-1", name: "iPhone 15", runtime: "iOS.17.5", state: "Shutdown", isAvailable: true },
+    { udid: "UUID-2", name: "iPhone 16", runtime: "iOS.18.0", state: "Shutdown", isAvailable: true },
+    { udid: "UUID-3", name: "iPhone 16", runtime: "iOS.18.0", state: "Booted", isAvailable: true },
+    { udid: "UUID-4", name: "iPad Pro", runtime: "iOS.18.0", state: "Shutdown", isAvailable: true },
+  ];
+
+  it("finds by UDID", () => {
+    const sim = findSimulator(simulators, "UUID-1");
+    expect(sim?.name).toBe("iPhone 15");
+  });
+
+  it("finds by name, preferring booted", () => {
+    const sim = findSimulator(simulators, "iPhone 16");
+    expect(sim?.udid).toBe("UUID-3"); // booted one
+  });
+
+  it("defaults to latest booted iPhone", () => {
+    const sim = findSimulator(simulators);
+    expect(sim?.udid).toBe("UUID-3");
+  });
+
+  it("defaults to latest iPhone if none booted", () => {
+    const notBooted: Simulator[] = [
+      { udid: "UUID-1", name: "iPhone 15", runtime: "iOS.17.5", state: "Shutdown", isAvailable: true },
+      { udid: "UUID-2", name: "iPhone 16", runtime: "iOS.18.0", state: "Shutdown", isAvailable: true },
+    ];
+    const sim = findSimulator(notBooted);
+    expect(sim?.udid).toBe("UUID-2"); // latest runtime
+  });
+
+  it("returns undefined for empty list", () => {
+    expect(findSimulator([])).toBeUndefined();
+  });
+});
