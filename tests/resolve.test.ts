@@ -5,6 +5,7 @@ import {
   resolveProjectAndScheme,
   getXcodebuildProjectArgs,
   updateProjectStatus,
+  autoDetect,
 } from "../src/resolve.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -233,5 +234,73 @@ describe("updateProjectStatus", () => {
     const ui = createMockUI();
     updateProjectStatus("/project", state, ui);
     expect(ui.setStatus).toHaveBeenCalledWith("xcode-project", "📁 sub/App.xcodeproj");
+  });
+});
+
+// ── autoDetect ─────────────────────────────────────────────────────────────
+
+describe("autoDetect", () => {
+  it("auto-selects project, scheme, and simulator silently", async () => {
+    const exec = mockExec({
+      find: { stdout: "/project/App.xcodeproj\n" },
+      "-list": { stdout: "    Schemes:\n        App\n        AppTests\n" },
+      simctl: {
+        stdout: JSON.stringify({
+          devices: {
+            "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
+              { udid: "UUID-1", name: "iPhone 16", state: "Shutdown", isAvailable: true },
+            ],
+          },
+        }),
+      },
+    });
+
+    const state = createState();
+    const ui = createMockUI();
+    await autoDetect(exec, "/project", state, ui);
+
+    // Project selected
+    expect(state.activeProject?.path).toBe("/project/App.xcodeproj");
+    expect(state.activeProject?.type).toBe("project");
+
+    // Non-test scheme preferred
+    expect(state.activeScheme?.name).toBe("App");
+
+    // Simulator selected
+    expect(state.activeSimulator?.name).toBe("iPhone 16");
+
+    // Status bar updated for both
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode-project", "📁 App.xcodeproj");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📱 iPhone 16 (iOS.18.0)");
+
+    // No select prompts shown
+    expect(ui.select).not.toHaveBeenCalled();
+  });
+
+  it("does not crash when no projects found", async () => {
+    const exec = mockExec({
+      find: { stdout: "", code: 0 },
+      simctl: { stdout: JSON.stringify({ devices: {} }) },
+    });
+
+    const state = createState();
+    const ui = createMockUI();
+    await autoDetect(exec, "/empty", state, ui);
+
+    expect(state.activeProject).toBeUndefined();
+    expect(state.activeSimulator).toBeUndefined();
+  });
+
+  it("prefers workspace over project", async () => {
+    const exec = mockExec({
+      find: { stdout: "/p/App.xcworkspace\n/p/App.xcodeproj\n" },
+      "-list": { stdout: "    Schemes:\n        App\n" },
+      simctl: { stdout: JSON.stringify({ devices: {} }) },
+    });
+
+    const state = createState();
+    await autoDetect(exec, "/p", state, createMockUI());
+
+    expect(state.activeProject?.type).toBe("workspace");
   });
 });

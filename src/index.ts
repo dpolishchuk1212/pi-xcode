@@ -3,7 +3,7 @@ import nodePath from "node:path";
 import type { ExecFn } from "./types.js";
 import { createState } from "./state.js";
 import { discoverProjects, discoverSchemes, discoverSimulators } from "./discovery.js";
-import { discoverAndSelect, updateProjectStatus } from "./resolve.js";
+import { autoDetect, discoverAndSelect, updateProjectStatus } from "./resolve.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
 import { registerDiscoverTool } from "./tools/discover.js";
@@ -138,5 +138,8 @@ export default function (pi: ExtensionAPI) {
     const currentTools = pi.getActiveTools();
     const withoutBuiltIn = currentTools.filter((t) => !builtInXcodeTools.includes(t));
     pi.setActiveTools([...withoutBuiltIn, ...builtInXcodeTools]);
+
+    // Auto-detect project and simulator silently
+    await autoDetect(exec, cwd, state, ctx.ui);
   });
 }

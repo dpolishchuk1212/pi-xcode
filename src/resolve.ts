@@ -5,7 +5,7 @@
 import nodePath from "node:path";
 import type { XcodeProject, XcodeScheme, ExecFn } from "./types.js";
 import type { XcodeState } from "./state.js";
-import { discoverProjects, discoverSchemes } from "./discovery.js";
+import { discoverProjects, discoverSchemes, discoverSimulators, findSimulator } from "./discovery.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -175,6 +175,44 @@ export function updateProjectStatus(cwd: string, state: XcodeState, ui: ResolveU
         : "📁";
 
   ui.setStatus("xcode-project", `${icon} ${label}`);
+}
+
+// ── Silent auto-detect (session start) ─────────────────────────────────────
+
+/**
+ * Silently auto-detect the best project, scheme, and simulator at session start.
+ * Picks the first match without prompting. Updates state and status bar.
+ */
+export async function autoDetect(
+  exec: ExecFn,
+  cwd: string,
+  state: XcodeState,
+  ui: Pick<ResolveUI, "setStatus">,
+): Promise<void> {
+  // ── Project & scheme ─────────────────────────────────────────────────
+  const projects = await discoverProjects(exec, cwd, 6);
+
+  if (projects.length > 0) {
+    // Already sorted: workspace > project > package — pick first
+    const selectedProject = projects[0];
+
+    const schemes = await discoverSchemes(exec, selectedProject.path);
+    const selectedScheme =
+      schemes.find((s) => !s.name.toLowerCase().includes("test")) ?? schemes[0];
+
+    state.activeProject = selectedProject;
+    state.activeScheme = selectedScheme;
+    updateProjectStatus(cwd, state, ui as ResolveUI);
+  }
+
+  // ── Simulator ────────────────────────────────────────────────────────
+  const simulators = await discoverSimulators(exec);
+  const sim = findSimulator(simulators);
+
+  if (sim) {
+    state.activeSimulator = sim;
+    ui.setStatus("xcode", `📱 ${sim.name} (${sim.runtime})`);
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
