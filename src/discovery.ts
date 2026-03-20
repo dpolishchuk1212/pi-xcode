@@ -150,20 +150,15 @@ export async function readSchemeProductType(schemePath: string): Promise<SchemeP
 
 /**
  * Enrich a list of schemes with product type info by reading their .xcscheme files.
- * Looks in both xcshareddata and xcuserdata scheme directories.
+ *
+ * For workspaces, schemes typically live inside contained .xcodeproj bundles,
+ * so we search both the workspace and sibling .xcodeproj scheme directories.
  */
 async function enrichSchemesWithProductType(schemes: XcodeScheme[], projectPath: string): Promise<void> {
   if (projectPath.endsWith("Package.swift")) return; // SPM packages don't have .xcscheme files
 
-  // Build list of possible scheme directories
-  const schemeDirs: string[] = [];
-
-  // Shared schemes: <project>/xcshareddata/xcschemes/
-  schemeDirs.push(nodePath.join(projectPath, "xcshareddata", "xcschemes"));
-
-  // For .xcodeproj, also check the parent workspace if it exists
-  // User schemes: <project>/xcuserdata/<user>.xcuserdatad/xcschemes/
-  // (skipping user schemes for now — shared schemes are the primary source)
+  const schemeDirs = await collectSchemeDirs(projectPath);
+  if (schemeDirs.length === 0) return;
 
   await Promise.all(
     schemes.map(async (scheme) => {
@@ -177,6 +172,39 @@ async function enrichSchemesWithProductType(schemes: XcodeScheme[], projectPath:
       }
     }),
   );
+}
+
+/**
+ * Collect all scheme directories to search for .xcscheme files.
+ *
+ * For .xcodeproj: just its own xcshareddata/xcschemes/
+ * For .xcworkspace: its own xcshareddata/xcschemes/ PLUS
+ *   all .xcodeproj/xcshareddata/xcschemes/ in the same directory
+ *   (workspaces contain schemes from their referenced projects)
+ */
+async function collectSchemeDirs(projectPath: string): Promise<string[]> {
+  const dirs: string[] = [];
+
+  // Always include the project/workspace's own scheme dir
+  dirs.push(nodePath.join(projectPath, "xcshareddata", "xcschemes"));
+
+  // For workspaces, also search sibling .xcodeproj scheme directories
+  if (projectPath.endsWith(".xcworkspace")) {
+    const parentDir = nodePath.dirname(projectPath);
+    try {
+      const { readdir } = await import("node:fs/promises");
+      const entries = await readdir(parentDir);
+      for (const entry of entries) {
+        if (entry.endsWith(".xcodeproj")) {
+          dirs.push(nodePath.join(parentDir, entry, "xcshareddata", "xcschemes"));
+        }
+      }
+    } catch {
+      // Directory read failed — continue with what we have
+    }
+  }
+
+  return dirs;
 }
 
 /**
