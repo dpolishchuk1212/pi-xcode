@@ -3,7 +3,8 @@
  */
 
 import nodePath from "node:path";
-import type { Destination, DiscoveryResult, ExecFn, Simulator, XcodeProject, XcodeScheme } from "./types.js";
+import { readFile } from "node:fs/promises";
+import type { Destination, DiscoveryResult, ExecFn, SchemeProductType, Simulator, XcodeProject, XcodeScheme } from "./types.js";
 import { buildListArgs, buildShowDestinationsArgs, buildSimctlListArgs } from "./commands.js";
 import { parseConfigurationList, parseDestinations, parseSchemeList, parseSimulatorList } from "./parsers.js";
 
@@ -75,6 +76,8 @@ export async function discoverProjects(exec: ExecFn, cwd: string, maxDepth: numb
 
 /**
  * Discover schemes for a given project, workspace, or Package.swift.
+ * Enriches each scheme with its product type (app, framework, test, etc.)
+ * by reading the .xcscheme files.
  */
 export async function discoverSchemes(exec: ExecFn, projectPath: string): Promise<XcodeScheme[]> {
   let args: string[];
@@ -91,7 +94,89 @@ export async function discoverSchemes(exec: ExecFn, projectPath: string): Promis
   const result = await exec("xcodebuild", args, { timeout: 15000, cwd: execCwd });
 
   const combined = result.stdout + "\n" + result.stderr;
-  return parseSchemeList(combined, projectPath);
+  const schemes = parseSchemeList(combined, projectPath);
+
+  // Enrich schemes with product type from .xcscheme files
+  await enrichSchemesWithProductType(schemes, projectPath);
+
+  return schemes;
+}
+
+// ── Scheme product type detection ──────────────────────────────────────────
+
+/**
+ * Infer the product type from an .xcscheme file's BuildableName.
+ *   - `.app` → "app"
+ *   - `.framework` → "framework"
+ *   - `.xctest` → "test"
+ *   - `.appex` → "extension"
+ *   - anything else → "other"
+ */
+export function inferProductType(buildableName: string): SchemeProductType {
+  if (buildableName.endsWith(".app")) return "app";
+  if (buildableName.endsWith(".framework")) return "framework";
+  if (buildableName.endsWith(".xctest")) return "test";
+  if (buildableName.endsWith(".appex")) return "extension";
+  return "other";
+}
+
+/**
+ * Read an .xcscheme file and extract the BuildableName from the primary
+ * BuildActionEntry. Returns the inferred product type, or undefined if
+ * the file can't be read or parsed.
+ */
+export async function readSchemeProductType(schemePath: string): Promise<SchemeProductType | undefined> {
+  try {
+    const xml = await readFile(schemePath, "utf-8");
+
+    // Look for BuildableName in the first BuildActionEntry's BuildableReference.
+    // This is the primary build product.
+    const match = xml.match(/<BuildActionEntry[^>]*buildForRunning\s*=\s*"YES"[\s\S]*?BuildableName\s*=\s*"([^"]+)"/);
+    if (match) {
+      return inferProductType(match[1]);
+    }
+
+    // Fallback: any BuildableName in a BuildActionEntry
+    const fallback = xml.match(/<BuildActionEntry[\s\S]*?BuildableName\s*=\s*"([^"]+)"/);
+    if (fallback) {
+      return inferProductType(fallback[1]);
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Enrich a list of schemes with product type info by reading their .xcscheme files.
+ * Looks in both xcshareddata and xcuserdata scheme directories.
+ */
+async function enrichSchemesWithProductType(schemes: XcodeScheme[], projectPath: string): Promise<void> {
+  if (projectPath.endsWith("Package.swift")) return; // SPM packages don't have .xcscheme files
+
+  // Build list of possible scheme directories
+  const schemeDirs: string[] = [];
+
+  // Shared schemes: <project>/xcshareddata/xcschemes/
+  schemeDirs.push(nodePath.join(projectPath, "xcshareddata", "xcschemes"));
+
+  // For .xcodeproj, also check the parent workspace if it exists
+  // User schemes: <project>/xcuserdata/<user>.xcuserdatad/xcschemes/
+  // (skipping user schemes for now — shared schemes are the primary source)
+
+  await Promise.all(
+    schemes.map(async (scheme) => {
+      for (const dir of schemeDirs) {
+        const schemePath = nodePath.join(dir, `${scheme.name}.xcscheme`);
+        const productType = await readSchemeProductType(schemePath);
+        if (productType) {
+          scheme.productType = productType;
+          return;
+        }
+      }
+    }),
+  );
 }
 
 /**
@@ -170,7 +255,7 @@ export async function discover(exec: ExecFn, cwd: string): Promise<DiscoveryResu
 
 /**
  * Auto-select the best project/workspace and scheme for a build.
- * Prefers workspaces over projects, uses the first non-test scheme.
+ * Prefers workspaces over projects, uses the best app scheme.
  */
 export function autoSelect(
   discovery: DiscoveryResult,
@@ -184,11 +269,21 @@ export function autoSelect(
     if (scheme) return { project, scheme };
   }
 
-  // Prefer non-test schemes
-  const mainScheme =
-    discovery.schemes.find((s) => !s.name.toLowerCase().includes("test")) ?? discovery.schemes[0];
+  // Prefer app schemes, then non-test/non-framework, then first
+  const schemes = discovery.schemes;
+  const appScheme = schemes.find((s) => s.productType === "app");
+  if (appScheme) return { project, scheme: appScheme };
 
-  return { project, scheme: mainScheme };
+  const extScheme = schemes.find((s) => s.productType === "extension");
+  if (extScheme) return { project, scheme: extScheme };
+
+  const nonTestNonFramework = schemes.find((s) => {
+    const lower = s.name.toLowerCase();
+    return !lower.includes("test") && !lower.includes("framework");
+  });
+  if (nonTestNonFramework) return { project, scheme: nonTestNonFramework };
+
+  return { project, scheme: schemes[0] };
 }
 
 /**

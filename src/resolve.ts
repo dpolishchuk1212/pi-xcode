@@ -53,8 +53,7 @@ export async function resolveProjectAndScheme(
     let schemeName = explicitParams.scheme;
     if (!schemeName) {
       const schemes = await discoverSchemes(exec, projectPath);
-      const main = schemes.find((s) => !s.name.toLowerCase().includes("test")) ?? schemes[0];
-      schemeName = main?.name;
+      schemeName = pickBestScheme(schemes)?.name;
     }
 
     return { project: { path: projectPath, type }, scheme: schemeName };
@@ -136,9 +135,8 @@ export async function refreshSchemes(
   const schemes = await discoverSchemes(exec, state.activeProject.path);
   state.availableSchemes = schemes;
 
-  // Auto-select: prefer non-test scheme, then first
-  const best = schemes.find((s) => !s.name.toLowerCase().includes("test")) ?? schemes[0];
-  state.activeScheme = best;
+  // Auto-select: prefer app schemes, then non-test/non-framework, then first
+  state.activeScheme = pickBestScheme(schemes);
 
   // Refresh destinations and configurations in parallel
   await Promise.all([
@@ -194,6 +192,35 @@ export async function refreshDestinations(
   // Auto-select best destination
   const best = pickBestDestination(destinations);
   state.activeDestination = best;
+}
+
+/**
+ * Pick the best scheme from a list.
+ * Priority:
+ *   1. App schemes (productType === "app")
+ *   2. Non-test, non-framework schemes (fallback heuristic by name)
+ *   3. First scheme
+ */
+export function pickBestScheme(schemes: XcodeScheme[]): XcodeScheme | undefined {
+  if (schemes.length === 0) return undefined;
+
+  // 1. Prefer app schemes (identified from .xcscheme file)
+  const appSchemes = schemes.filter((s) => s.productType === "app");
+  if (appSchemes.length > 0) return appSchemes[0];
+
+  // 2. Prefer extension schemes (also executable)
+  const extSchemes = schemes.filter((s) => s.productType === "extension");
+  if (extSchemes.length > 0) return extSchemes[0];
+
+  // 3. Fallback: exclude test/framework by name when productType isn't known
+  const nonTestNonFramework = schemes.filter((s) => {
+    const lower = s.name.toLowerCase();
+    return !lower.includes("test") && !lower.includes("framework");
+  });
+  if (nonTestNonFramework.length > 0) return nonTestNonFramework[0];
+
+  // 4. Last resort
+  return schemes[0];
 }
 
 /**

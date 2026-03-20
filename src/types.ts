@@ -20,9 +20,13 @@ export interface XcodeProject {
   type: "project" | "workspace" | "package";
 }
 
+export type SchemeProductType = "app" | "framework" | "test" | "extension" | "other";
+
 export interface XcodeScheme {
   name: string;
   project: string;
+  /** Product type inferred from the .xcscheme file (app, framework, test, etc.). */
+  productType?: SchemeProductType;
 }
 
 export interface Simulator {
