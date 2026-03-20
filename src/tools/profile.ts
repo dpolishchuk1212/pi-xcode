@@ -73,7 +73,7 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
       }
 
       const destination = buildSimulatorDestination(sim.udid);
-      const config = params.configuration ?? "Release";
+      const config = params.configuration ?? state.activeConfiguration ?? "Release";
 
       // ── Build ────────────────────────────────────────────────────────
       const buildCmdArgs = buildBuildArgs({

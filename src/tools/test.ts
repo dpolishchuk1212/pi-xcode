@@ -53,11 +53,13 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
         destination = buildDestinationString(state.activeDestination);
       }
 
+      const configuration = params.configuration ?? state.activeConfiguration ?? "Debug";
+
       const args = buildTestArgs({
         project: xcodeArgs.projectFlag,
         workspace: xcodeArgs.workspaceFlag,
         scheme: resolved.scheme,
-        configuration: params.configuration ?? "Debug",
+        configuration,
         destination,
         testPlan: params.testPlan,
         onlyTesting: params.onlyTesting,

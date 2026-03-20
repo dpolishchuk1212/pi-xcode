@@ -5,7 +5,7 @@
 import nodePath from "node:path";
 import type { Destination, XcodeProject, XcodeScheme, ExecFn } from "./types.js";
 import type { XcodeState } from "./state.js";
-import { discoverDestinations, discoverProjects, discoverSchemes } from "./discovery.js";
+import { discoverConfigurations, discoverDestinations, discoverProjects, discoverSchemes } from "./discovery.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -116,7 +116,7 @@ export async function discoverAndSelect(
 
 /**
  * Discover schemes for the active project, auto-select the best one,
- * then refresh destinations. Updates state.
+ * then refresh destinations and configurations. Updates state.
  */
 export async function refreshSchemes(
   exec: ExecFn,
@@ -128,6 +128,8 @@ export async function refreshSchemes(
     state.activeScheme = undefined;
     state.availableDestinations = [];
     state.activeDestination = undefined;
+    state.availableConfigurations = [];
+    state.activeConfiguration = undefined;
     return;
   }
 
@@ -138,8 +140,35 @@ export async function refreshSchemes(
   const best = schemes.find((s) => !s.name.toLowerCase().includes("test")) ?? schemes[0];
   state.activeScheme = best;
 
-  // Refresh destinations for the new scheme
-  await refreshDestinations(exec, state, ui);
+  // Refresh destinations and configurations in parallel
+  await Promise.all([
+    refreshDestinations(exec, state, ui),
+    refreshConfigurations(exec, state),
+  ]);
+}
+
+// ── Configuration helpers ──────────────────────────────────────────────────
+
+/**
+ * Discover build configurations for the active project and auto-select.
+ * Prefers "Debug", then first available.
+ */
+export async function refreshConfigurations(
+  exec: ExecFn,
+  state: XcodeState,
+): Promise<void> {
+  if (!state.activeProject) {
+    state.availableConfigurations = [];
+    state.activeConfiguration = undefined;
+    return;
+  }
+
+  const configs = await discoverConfigurations(exec, state.activeProject.path);
+  state.availableConfigurations = configs;
+
+  // Auto-select: prefer "Debug", then first
+  const best = configs.find((c) => c === "Debug") ?? configs[0];
+  state.activeConfiguration = best;
 }
 
 // ── Destination helpers ────────────────────────────────────────────────────
@@ -210,7 +239,7 @@ export function formatDestinationLabel(d: Destination): string {
 // ── Status bar ─────────────────────────────────────────────────────────────
 
 /**
- * Update the unified status bar: `project | scheme | destination`
+ * Update the unified status bar: `project · scheme · configuration · destination`
  * Styled to match the native pi footer (dim text).
  */
 export function updateStatusBar(
@@ -228,6 +257,10 @@ export function updateStatusBar(
 
   if (state.activeScheme) {
     parts.push(theme.fg("dim", state.activeScheme.name));
+  }
+
+  if (state.activeConfiguration) {
+    parts.push(theme.fg("dim", state.activeConfiguration));
   }
 
   if (state.activeDestination) {

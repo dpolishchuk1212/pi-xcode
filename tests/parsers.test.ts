@@ -6,6 +6,7 @@ import {
   parseTestCases,
   parseTestResult,
   parseSchemeList,
+  parseConfigurationList,
   parseSimulatorList,
   parseBundleId,
   parseAppPath,
@@ -382,5 +383,60 @@ describe("parseDestinations", () => {
     const dests = parseDestinations(output);
     expect(dests).toHaveLength(3);
     expect(dests.map((d) => d.platform)).toEqual(["macOS", "iOS Simulator", "iOS"]);
+  });
+});
+
+// ── Configuration list parsing ─────────────────────────────────────────────
+
+describe("parseConfigurationList", () => {
+  it("parses standard Debug/Release configurations", () => {
+    const output = `Information about project "TestApp":
+    Targets:
+        TestApp
+
+    Build Configurations:
+        Debug
+        Release
+
+    If no build configuration is specified and -scheme is not passed then "Release" is used.
+
+    Schemes:
+        TestApp
+`;
+    const configs = parseConfigurationList(output);
+    expect(configs).toEqual(["Debug", "Release"]);
+  });
+
+  it("parses custom configurations", () => {
+    const output = `    Build Configurations:
+        Debug
+        Release
+        Staging
+        Production
+`;
+    const configs = parseConfigurationList(output);
+    expect(configs).toEqual(["Debug", "Release", "Staging", "Production"]);
+  });
+
+  it("returns empty for no configurations section", () => {
+    const output = `    Schemes:
+        App
+`;
+    expect(parseConfigurationList(output)).toEqual([]);
+  });
+
+  it("returns empty for empty input", () => {
+    expect(parseConfigurationList("")).toEqual([]);
+  });
+
+  it("stops at 'If no build configuration' line", () => {
+    const output = `    Build Configurations:
+        Debug
+        Release
+
+    If no build configuration is specified and -scheme is not passed then "Release" is used.
+`;
+    const configs = parseConfigurationList(output);
+    expect(configs).toEqual(["Debug", "Release"]);
   });
 });

@@ -163,6 +163,38 @@ export function parseSchemeList(output: string, projectPath: string): XcodeSchem
   return schemes;
 }
 
+/**
+ * Parses build configurations from `xcodebuild -list` output.
+ * Returns the list of configuration names (e.g. ["Debug", "Release"]).
+ */
+export function parseConfigurationList(output: string): string[] {
+  const configs: string[] = [];
+  let inConfigs = false;
+
+  for (const rawLine of output.split("\n")) {
+    const line = rawLine.trimEnd();
+
+    if (/^\s*Build Configurations:\s*$/.test(line)) {
+      inConfigs = true;
+      continue;
+    }
+
+    if (inConfigs) {
+      const trimmed = line.trim();
+      if (trimmed === "" || /^\S/.test(line)) {
+        break;
+      }
+      // Stop if we hit another section header (e.g. "If no build configuration...")
+      if (/^\s*If no build configuration/.test(line)) {
+        break;
+      }
+      configs.push(trimmed);
+    }
+  }
+
+  return configs;
+}
+
 // ── Simulator list parsing ─────────────────────────────────────────────────
 
 /**

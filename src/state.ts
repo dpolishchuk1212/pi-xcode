@@ -10,6 +10,8 @@ export interface XcodeState {
   availableSchemes: XcodeScheme[];
   activeDestination: Destination | undefined;
   availableDestinations: Destination[];
+  activeConfiguration: string | undefined;
+  availableConfigurations: string[];
 }
 
 export function createState(): XcodeState {
@@ -19,5 +21,7 @@ export function createState(): XcodeState {
     availableSchemes: [],
     activeDestination: undefined,
     availableDestinations: [],
+    activeConfiguration: undefined,
+    availableConfigurations: [],
   };
 }

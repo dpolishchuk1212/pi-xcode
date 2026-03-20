@@ -6,6 +6,7 @@ import { discoverProjects } from "./discovery.js";
 import {
   autoDetect,
   formatDestinationLabel,
+  refreshConfigurations,
   refreshDestinations,
   refreshSchemes,
   updateStatusBar,
@@ -64,8 +65,9 @@ export default function (pi: ExtensionAPI) {
 
       const relativePath = nodePath.relative(cwd, selectedProject.path) || selectedProject.path;
       const schemeInfo = state.activeScheme ? ` → scheme: ${state.activeScheme.name}` : "";
+      const configInfo = state.activeConfiguration ? ` → config: ${state.activeConfiguration}` : "";
       const destInfo = state.activeDestination ? ` → dest: ${formatDestinationLabel(state.activeDestination)}` : "";
-      ctx.ui.notify(`Active project: ${relativePath}${schemeInfo}${destInfo}`, "info");
+      ctx.ui.notify(`Active project: ${relativePath}${schemeInfo}${configInfo}${destInfo}`, "info");
     },
   });
 
@@ -161,6 +163,44 @@ export default function (pi: ExtensionAPI) {
       state.activeDestination = selected;
       updateStatusBar(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Run destination: ${formatDestinationLabel(selected)}`, "info");
+    },
+  });
+
+  // ── /configuration command ────────────────────────────────────────────
+  pi.registerCommand("configuration", {
+    description: "Select the build configuration (Debug, Release, etc.)",
+    handler: async (_args, ctx) => {
+      if (!state.activeProject) {
+        ctx.ui.notify("No active project. Use /project first.", "error");
+        return;
+      }
+
+      if (state.availableConfigurations.length === 0) {
+        ctx.ui.notify("No build configurations available for this project.", "error");
+        return;
+      }
+
+      const theme = ctx.ui.theme;
+
+      const formatConfig = (c: string) => {
+        let label = c;
+        if (state.activeConfiguration === c) {
+          label += theme.fg("accent", " ★ active");
+        }
+        return label;
+      };
+
+      const configOptions = state.availableConfigurations.map(formatConfig);
+      const choice = await ctx.ui.select("Select build configuration:", configOptions);
+      if (choice === undefined) return;
+
+      const idx = configOptions.indexOf(choice);
+      const selected = idx >= 0 ? state.availableConfigurations[idx] : undefined;
+      if (!selected) return;
+
+      state.activeConfiguration = selected;
+      updateStatusBar(ctx.cwd, state, ctx.ui);
+      ctx.ui.notify(`Build configuration: ${selected}`, "info");
     },
   });
 

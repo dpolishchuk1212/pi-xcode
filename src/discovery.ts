@@ -5,7 +5,7 @@
 import nodePath from "node:path";
 import type { Destination, DiscoveryResult, ExecFn, Simulator, XcodeProject, XcodeScheme } from "./types.js";
 import { buildListArgs, buildShowDestinationsArgs, buildSimctlListArgs } from "./commands.js";
-import { parseDestinations, parseSchemeList, parseSimulatorList } from "./parsers.js";
+import { parseConfigurationList, parseDestinations, parseSchemeList, parseSimulatorList } from "./parsers.js";
 
 /**
  * Find .xcodeproj, .xcworkspace, and Package.swift files in `cwd`.
@@ -92,6 +92,27 @@ export async function discoverSchemes(exec: ExecFn, projectPath: string): Promis
 
   const combined = result.stdout + "\n" + result.stderr;
   return parseSchemeList(combined, projectPath);
+}
+
+/**
+ * Discover build configurations for a given project, workspace, or Package.swift.
+ * Parses "Build Configurations:" section from `xcodebuild -list`.
+ */
+export async function discoverConfigurations(exec: ExecFn, projectPath: string): Promise<string[]> {
+  let args: string[];
+  let execCwd: string | undefined;
+
+  if (projectPath.endsWith("Package.swift")) {
+    args = ["-list"];
+    execCwd = nodePath.dirname(projectPath);
+  } else {
+    args = buildListArgs(projectPath);
+  }
+
+  const result = await exec("xcodebuild", args, { timeout: 15000, cwd: execCwd });
+
+  const combined = result.stdout + "\n" + result.stderr;
+  return parseConfigurationList(combined);
 }
 
 /**

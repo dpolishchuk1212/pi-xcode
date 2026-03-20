@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { ExecFn, ExecResult } from "../src/types.js";
-import { discoverProjects, discoverSchemes, discoverSimulators, discover } from "../src/discovery.js";
+import { discoverProjects, discoverSchemes, discoverConfigurations, discoverSimulators, discover } from "../src/discovery.js";
 import { autoSelect, findSimulator } from "../src/discovery.js";
 import type { DiscoveryResult, Simulator } from "../src/types.js";
 
@@ -122,6 +122,42 @@ describe("discoverSchemes", () => {
     expect(schemes).toHaveLength(2);
     expect(schemes[0].name).toBe("MyApp");
     expect(schemes[1].name).toBe("MyAppTests");
+  });
+});
+
+// ── discoverConfigurations ──────────────────────────────────────────────────
+
+describe("discoverConfigurations", () => {
+  it("parses configurations from xcodebuild -list", async () => {
+    const exec = mockExec({
+      "-list": {
+        stdout: `Information about project "MyApp":
+    Build Configurations:
+        Debug
+        Release
+
+    Schemes:
+        MyApp
+`,
+      },
+    });
+
+    const configs = await discoverConfigurations(exec, "/project/MyApp.xcodeproj");
+    expect(configs).toEqual(["Debug", "Release"]);
+  });
+
+  it("uses cwd for Package.swift", async () => {
+    const exec = vi.fn(async (_cmd: string, args: string[], options?: { cwd?: string }) => {
+      expect(options?.cwd).toBe("/project");
+      return {
+        stdout: "    Build Configurations:\n        Debug\n        Release\n",
+        stderr: "",
+        code: 0,
+        killed: false,
+      };
+    }) as ExecFn;
+
+    await discoverConfigurations(exec, "/project/Package.swift");
   });
 });
 

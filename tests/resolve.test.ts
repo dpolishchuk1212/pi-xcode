@@ -8,6 +8,7 @@ import {
   autoDetect,
   pickBestDestination,
   formatDestinationLabel,
+  refreshConfigurations,
 } from "../src/resolve.js";
 import type { Destination } from "../src/types.js";
 
@@ -206,15 +207,16 @@ describe("updateStatusBar", () => {
     expect(ui.setStatus).toHaveBeenCalledWith("xcode", undefined);
   });
 
-  it("shows project · scheme · destination", () => {
+  it("shows project · scheme · configuration · destination", () => {
     const state = createState();
     state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
     state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
+    state.activeConfiguration = "Debug";
     state.activeDestination = { platform: "iOS Simulator", id: "UUID", name: "iPhone 17", os: "18.0", arch: "arm64" };
 
     const ui = createMockUI();
     updateStatusBar("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj · App · iPhone 17 18.0");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj · App · Debug · iPhone 17 18.0");
   });
 
   it("shows project only when no scheme or destination", () => {
@@ -259,10 +261,20 @@ describe("updateStatusBar", () => {
 // ── autoDetect ─────────────────────────────────────────────────────────────
 
 describe("autoDetect", () => {
-  it("auto-selects project, scheme, and destination silently", async () => {
+  it("auto-selects project, scheme, configuration, and destination silently", async () => {
     const exec = mockExec({
       find: { stdout: "/project/App.xcodeproj\n" },
-      "-list": { stdout: "    Schemes:\n        App\n        AppTests\n" },
+      "-list": {
+        stdout: `Information about project "App":
+    Build Configurations:
+        Debug
+        Release
+
+    Schemes:
+        App
+        AppTests
+`,
+      },
       "-showdestinations": {
         stdout: `Available destinations for the "App" scheme:
 \t\t{ platform:iOS Simulator, arch:arm64, id:UUID-1, OS:18.0, name:iPhone 16 }
@@ -282,12 +294,16 @@ describe("autoDetect", () => {
     // Non-test scheme preferred
     expect(state.activeScheme?.name).toBe("App");
 
+    // Configuration selected (prefers Debug)
+    expect(state.activeConfiguration).toBe("Debug");
+    expect(state.availableConfigurations).toEqual(["Debug", "Release"]);
+
     // Destination selected (prefers iPhone)
     expect(state.activeDestination?.name).toBe("iPhone 16");
     expect(state.availableDestinations).toHaveLength(2);
 
     // Unified status bar updated (mock theme returns unstyled text)
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj · App · iPhone 16 18.0");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj · App · Debug · iPhone 16 18.0");
 
     // No select prompts shown
     expect(ui.select).not.toHaveBeenCalled();
@@ -360,6 +376,58 @@ describe("pickBestDestination", () => {
     // Falls back to the placeholder since it's the only one
     const best = pickBestDestination(onlyPlaceholder);
     expect(best?.name).toBe("Any iOS Device");
+  });
+});
+
+// ── refreshConfigurations ──────────────────────────────────────────────────
+
+describe("refreshConfigurations", () => {
+  it("discovers and auto-selects Debug", async () => {
+    const exec = mockExec({
+      "-list": {
+        stdout: `    Build Configurations:
+        Debug
+        Release
+        Staging
+`,
+      },
+    });
+
+    const state = createState();
+    state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
+    await refreshConfigurations(exec, state);
+
+    expect(state.availableConfigurations).toEqual(["Debug", "Release", "Staging"]);
+    expect(state.activeConfiguration).toBe("Debug");
+  });
+
+  it("falls back to first config when no Debug", async () => {
+    const exec = mockExec({
+      "-list": {
+        stdout: `    Build Configurations:
+        Release
+        Staging
+`,
+      },
+    });
+
+    const state = createState();
+    state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
+    await refreshConfigurations(exec, state);
+
+    expect(state.activeConfiguration).toBe("Release");
+  });
+
+  it("clears when no project", async () => {
+    const exec = mockExec({});
+    const state = createState();
+    state.availableConfigurations = ["Debug"];
+    state.activeConfiguration = "Debug";
+
+    await refreshConfigurations(exec, state);
+
+    expect(state.availableConfigurations).toEqual([]);
+    expect(state.activeConfiguration).toBeUndefined();
   });
 });
 
