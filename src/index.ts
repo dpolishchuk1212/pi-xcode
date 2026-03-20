@@ -12,9 +12,10 @@ import {
   refreshSchemes,
   updateStatusBar,
 } from "./resolve.js";
-import { buildBuildArgs, buildDestinationString } from "./commands.js";
-import { parseBuildResult } from "./parsers.js";
+import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs } from "./commands.js";
+import { parseAppPath, parseBuildResult, parseBundleId } from "./parsers.js";
 import { formatBuildResult } from "./format.js";
+import { terminateApp, ensureDestinationReady, installApp, launchApp, destinationTypeLabel } from "./runner.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
 import { registerDiscoverTool } from "./tools/discover.js";
@@ -236,13 +237,115 @@ export default function (pi: ExtensionAPI) {
       });
 
       const destSuffix = destinationLabel ? ` → ${destinationLabel}` : "";
+      state.appStatus = "building";
+      updateStatusBar(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Building ${state.activeScheme.name} (${configuration})${destSuffix}...`, "info");
 
       const result = await exec("xcodebuild", args, { timeout: 600_000, cwd: xcodeArgs.execCwd });
       const combined = result.stdout + "\n" + result.stderr;
       const buildResult = parseBuildResult(combined);
 
+      state.appStatus = "idle";
+      updateStatusBar(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(formatBuildResult(buildResult), buildResult.success ? "info" : "error");
+    },
+  });
+
+  // ── /run command ─────────────────────────────────────────────────────
+  pi.registerCommand("run", {
+    description: "Build and run the app on the active destination. Usage: /run [scheme]",
+    handler: async (args, ctx) => {
+      if (!state.activeProject) {
+        ctx.ui.notify("No active project. Use /project first.", "error");
+        return;
+      }
+
+      // Optional scheme argument
+      const schemeArg = args?.trim() || undefined;
+      const scheme = schemeArg
+        ? state.availableSchemes.find((s) => s.name === schemeArg)?.name ?? schemeArg
+        : state.activeScheme?.name;
+
+      if (!scheme) {
+        ctx.ui.notify("No scheme available. Use /scheme to select one.", "error");
+        return;
+      }
+
+      const dest = state.activeDestination;
+      if (!dest) {
+        ctx.ui.notify("No destination available. Use /destination to select one.", "error");
+        return;
+      }
+
+      const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
+      const configuration = state.activeConfiguration ?? "Debug";
+      const destinationStr = buildDestinationString(dest);
+      const destLabel = formatDestinationLabel(dest);
+      const destType = destinationTypeLabel(dest);
+
+      // ── Build ──────────────────────────────────────────────────────
+      state.appStatus = "building";
+      updateStatusBar(ctx.cwd, state, ctx.ui);
+      ctx.ui.notify(`Building ${scheme} (${configuration}) for ${destLabel}...`, "info");
+
+      const buildCmdArgs = buildBuildArgs({
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme,
+        configuration,
+        destination: destinationStr,
+      });
+
+      const buildExec = await exec("xcodebuild", buildCmdArgs, { timeout: 600_000, cwd: xcodeArgs.execCwd });
+      const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
+      const buildResult = parseBuildResult(buildOutput);
+
+      if (!buildResult.success) {
+        state.appStatus = "idle";
+        updateStatusBar(ctx.cwd, state, ctx.ui);
+        ctx.ui.notify(formatBuildResult(buildResult), "error");
+        return;
+      }
+
+      // ── Resolve bundle ID & app path ───────────────────────────────
+      const settingsArgs = buildShowSettingsArgs({
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme,
+        configuration,
+        destination: destinationStr,
+      });
+
+      const settingsResult = await exec("xcodebuild", settingsArgs, { timeout: 30_000, cwd: xcodeArgs.execCwd });
+      const bundleId = parseBundleId(settingsResult.stdout);
+      const appPath = parseAppPath(settingsResult.stdout);
+
+      if (!bundleId || !appPath) {
+        state.appStatus = "idle";
+        updateStatusBar(ctx.cwd, state, ctx.ui);
+        ctx.ui.notify("Could not determine bundle ID or app path. Make sure the scheme builds an app target.", "error");
+        return;
+      }
+
+      // ── Terminate → Boot → Install → Launch ───────────────────────
+      await terminateApp(exec, dest, bundleId, appPath);
+      await ensureDestinationReady(exec, dest);
+
+      ctx.ui.notify(`Installing on ${destLabel}...`, "info");
+      await installApp(exec, dest, appPath);
+
+      ctx.ui.notify(`Launching ${bundleId}...`, "info");
+      const launchResult = await launchApp(exec, dest, bundleId, appPath);
+
+      if (launchResult.success) {
+        state.appStatus = "running";
+        updateStatusBar(ctx.cwd, state, ctx.ui);
+        ctx.ui.notify(`✅ ${scheme} launched on ${destLabel} [${destType}]`, "info");
+      } else {
+        state.appStatus = "idle";
+        updateStatusBar(ctx.cwd, state, ctx.ui);
+        ctx.ui.notify(`❌ Failed to launch on ${destLabel}: ${launchResult.error ?? "unknown error"}`, "error");
+      }
     },
   });
 

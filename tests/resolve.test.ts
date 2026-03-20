@@ -256,6 +256,30 @@ describe("updateStatusBar", () => {
     updateStatusBar("/project", state, ui);
     expect(ui.setStatus).toHaveBeenCalledWith("xcode", "sub/App.xcodeproj");
   });
+
+  it("shows building status", () => {
+    const state = createState();
+    state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
+    state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
+    state.appStatus = "building";
+
+    const ui = createMockUI();
+    updateStatusBar("/project", state, ui);
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj · App · ⏳ Building");
+  });
+
+  it("shows running status", () => {
+    const state = createState();
+    state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
+    state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
+    state.activeConfiguration = "Debug";
+    state.activeDestination = { platform: "iOS Simulator", id: "UUID", name: "iPhone 16", os: "18.0", arch: "arm64" };
+    state.appStatus = "running";
+
+    const ui = createMockUI();
+    updateStatusBar("/project", state, ui);
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj · App · Debug · iPhone 16 18.0 · ▶ Running");
+  });
 });
 
 // ── autoDetect ─────────────────────────────────────────────────────────────

@@ -269,6 +269,12 @@ export function updateStatusBar(
     parts.push(theme.fg("dim", `${d.name}${osLabel}`));
   }
 
+  if (state.appStatus === "building") {
+    parts.push(theme.fg("warning", "⏳ Building"));
+  } else if (state.appStatus === "running") {
+    parts.push(theme.fg("accent", "▶ Running"));
+  }
+
   if (parts.length === 0) {
     ui.setStatus("xcode", undefined);
   } else {

@@ -12,6 +12,7 @@ export interface XcodeState {
   availableDestinations: Destination[];
   activeConfiguration: string | undefined;
   availableConfigurations: string[];
+  appStatus: "idle" | "building" | "running";
 }
 
 export function createState(): XcodeState {
@@ -23,5 +24,6 @@ export function createState(): XcodeState {
     availableDestinations: [],
     activeConfiguration: undefined,
     availableConfigurations: [],
+    appStatus: "idle",
   };
 }
