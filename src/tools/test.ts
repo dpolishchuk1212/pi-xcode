@@ -2,9 +2,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
-import { buildTestArgs, buildSimulatorDestination } from "../commands.js";
+import { buildTestArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
 import { parseTestResult } from "../parsers.js";
-import { discoverSimulators, findSimulator } from "../discovery.js";
 import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
 import { formatTestResult } from "../format.js";
 
@@ -50,15 +49,8 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       if (!destination && params.simulator) {
         destination = buildSimulatorDestination(params.simulator);
       }
-      if (!destination && state.activeSimulator) {
-        destination = buildSimulatorDestination(state.activeSimulator.udid);
-      }
-      if (!destination) {
-        const simulators = await discoverSimulators(exec);
-        const sim = findSimulator(simulators);
-        if (sim) {
-          destination = buildSimulatorDestination(sim.udid);
-        }
+      if (!destination && state.activeDestination) {
+        destination = buildDestinationString(state.activeDestination);
       }
 
       const args = buildTestArgs({

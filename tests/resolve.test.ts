@@ -6,7 +6,10 @@ import {
   getXcodebuildProjectArgs,
   updateProjectStatus,
   autoDetect,
+  pickBestDestination,
+  formatDestinationLabel,
 } from "../src/resolve.js";
+import type { Destination } from "../src/types.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -240,18 +243,15 @@ describe("updateProjectStatus", () => {
 // ── autoDetect ─────────────────────────────────────────────────────────────
 
 describe("autoDetect", () => {
-  it("auto-selects project, scheme, and simulator silently", async () => {
+  it("auto-selects project, scheme, and destination silently", async () => {
     const exec = mockExec({
       find: { stdout: "/project/App.xcodeproj\n" },
       "-list": { stdout: "    Schemes:\n        App\n        AppTests\n" },
-      simctl: {
-        stdout: JSON.stringify({
-          devices: {
-            "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
-              { udid: "UUID-1", name: "iPhone 16", state: "Shutdown", isAvailable: true },
-            ],
-          },
-        }),
+      "-showdestinations": {
+        stdout: `Available destinations for the "App" scheme:
+\t\t{ platform:iOS Simulator, arch:arm64, id:UUID-1, OS:18.0, name:iPhone 16 }
+\t\t{ platform:iOS Simulator, arch:arm64, id:UUID-2, OS:18.0, name:iPad Air }
+`,
       },
     });
 
@@ -266,12 +266,13 @@ describe("autoDetect", () => {
     // Non-test scheme preferred
     expect(state.activeScheme?.name).toBe("App");
 
-    // Simulator selected
-    expect(state.activeSimulator?.name).toBe("iPhone 16");
+    // Destination selected (prefers iPhone)
+    expect(state.activeDestination?.name).toBe("iPhone 16");
+    expect(state.availableDestinations).toHaveLength(2);
 
     // Status bar updated for both
     expect(ui.setStatus).toHaveBeenCalledWith("xcode-project", "📁 App.xcodeproj");
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📱 iPhone 16 (iOS.18.0)");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📱 iPhone 16 (iOS 18.0)");
 
     // No select prompts shown
     expect(ui.select).not.toHaveBeenCalled();
@@ -280,7 +281,6 @@ describe("autoDetect", () => {
   it("does not crash when no projects found", async () => {
     const exec = mockExec({
       find: { stdout: "", code: 0 },
-      simctl: { stdout: JSON.stringify({ devices: {} }) },
     });
 
     const state = createState();
@@ -288,19 +288,87 @@ describe("autoDetect", () => {
     await autoDetect(exec, "/empty", state, ui);
 
     expect(state.activeProject).toBeUndefined();
-    expect(state.activeSimulator).toBeUndefined();
+    expect(state.activeDestination).toBeUndefined();
   });
 
   it("prefers workspace over project", async () => {
     const exec = mockExec({
       find: { stdout: "/p/App.xcworkspace\n/p/App.xcodeproj\n" },
       "-list": { stdout: "    Schemes:\n        App\n" },
-      simctl: { stdout: JSON.stringify({ devices: {} }) },
+      "-showdestinations": { stdout: "" },
     });
 
     const state = createState();
     await autoDetect(exec, "/p", state, createMockUI());
 
     expect(state.activeProject?.type).toBe("workspace");
+  });
+});
+
+// ── pickBestDestination ────────────────────────────────────────────────────
+
+describe("pickBestDestination", () => {
+  const destinations: Destination[] = [
+    { platform: "macOS", id: "MAC-1", name: "My Mac", arch: "arm64", variant: "Mac Catalyst" },
+    { platform: "iOS", id: "placeholder", name: "Any iOS Device" },
+    { platform: "iOS Simulator", id: "SIM-IPAD", name: "iPad Air", os: "18.0", arch: "arm64" },
+    { platform: "iOS Simulator", id: "SIM-IP16", name: "iPhone 16", os: "18.0", arch: "arm64" },
+    { platform: "iOS Simulator", id: "SIM-IP17", name: "iPhone 17", os: "18.1", arch: "arm64" },
+  ];
+
+  it("prefers iPhone simulator with latest OS", () => {
+    const best = pickBestDestination(destinations);
+    expect(best?.name).toBe("iPhone 17");
+    expect(best?.os).toBe("18.1");
+  });
+
+  it("falls back to iPad if no iPhone sims", () => {
+    const ipadsOnly = destinations.filter((d) => !d.name.startsWith("iPhone"));
+    const best = pickBestDestination(ipadsOnly);
+    expect(best?.name).toBe("iPad Air");
+  });
+
+  it("falls back to macOS if no simulators", () => {
+    const noSims = destinations.filter((d) => !d.platform.includes("Simulator") && !d.id.includes("placeholder"));
+    const best = pickBestDestination(noSims);
+    expect(best?.name).toBe("My Mac");
+  });
+
+  it("returns undefined for empty list", () => {
+    expect(pickBestDestination([])).toBeUndefined();
+  });
+
+  it("skips placeholders", () => {
+    const onlyPlaceholder: Destination[] = [
+      { platform: "iOS", id: "dvtdevice-placeholder", name: "Any iOS Device" },
+    ];
+    // Falls back to the placeholder since it's the only one
+    const best = pickBestDestination(onlyPlaceholder);
+    expect(best?.name).toBe("Any iOS Device");
+  });
+});
+
+// ── formatDestinationLabel ─────────────────────────────────────────────────
+
+describe("formatDestinationLabel", () => {
+  it("formats simulator destination", () => {
+    const label = formatDestinationLabel({
+      platform: "iOS Simulator", id: "UUID", name: "iPhone 17", os: "18.0", arch: "arm64",
+    });
+    expect(label).toBe("iPhone 17 (18.0)");
+  });
+
+  it("formats macOS destination with variant", () => {
+    const label = formatDestinationLabel({
+      platform: "macOS", id: "UUID", name: "My Mac", arch: "arm64", variant: "Mac Catalyst",
+    });
+    expect(label).toBe("My Mac — Mac Catalyst");
+  });
+
+  it("formats simple destination", () => {
+    const label = formatDestinationLabel({
+      platform: "iOS", id: "UUID", name: "Any iOS Device",
+    });
+    expect(label).toBe("Any iOS Device");
   });
 });

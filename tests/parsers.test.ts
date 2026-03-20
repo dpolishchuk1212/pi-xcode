@@ -9,6 +9,7 @@ import {
   parseSimulatorList,
   parseBundleId,
   parseAppPath,
+  parseDestinations,
 } from "../src/parsers.js";
 
 // ── Build issue parsing ────────────────────────────────────────────────────
@@ -322,5 +323,64 @@ describe("parseAppPath", () => {
     expect(parseAppPath("BUILT_PRODUCTS_DIR = /some/path")).toBeUndefined();
     expect(parseAppPath("FULL_PRODUCT_NAME = Foo.app")).toBeUndefined();
     expect(parseAppPath("nothing useful")).toBeUndefined();
+  });
+});
+
+// ── Destination parsing ────────────────────────────────────────────────────
+
+describe("parseDestinations", () => {
+  it("parses simulator destinations", () => {
+    const output = `Available destinations for the "TestApp" scheme:
+\t\t{ platform:iOS Simulator, arch:arm64, id:DB823BA5-0ADF-45F9-8DEF-2FA95CE15D8E, OS:26.1, name:iPhone 17 }
+\t\t{ platform:iOS Simulator, arch:arm64, id:81391BE0-4CB2-4C2D-8B7D-E3BD66973044, OS:26.1, name:iPhone 17 Pro }`;
+
+    const dests = parseDestinations(output);
+    expect(dests).toHaveLength(2);
+    expect(dests[0]).toEqual({
+      platform: "iOS Simulator",
+      arch: "arm64",
+      id: "DB823BA5-0ADF-45F9-8DEF-2FA95CE15D8E",
+      os: "26.1",
+      name: "iPhone 17",
+      variant: undefined,
+    });
+    expect(dests[1].name).toBe("iPhone 17 Pro");
+  });
+
+  it("parses macOS with variant containing brackets", () => {
+    const output = `\t\t{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00006040-001010910E28801C, name:My Mac }`;
+
+    const dests = parseDestinations(output);
+    expect(dests).toHaveLength(1);
+    expect(dests[0].platform).toBe("macOS");
+    expect(dests[0].variant).toBe("Designed for [iPad,iPhone]");
+    expect(dests[0].name).toBe("My Mac");
+  });
+
+  it("parses physical device and placeholder destinations", () => {
+    const output = `\t\t{ platform:iOS, arch:arm64, id:00008120-0014042034D8A01E, name:Dmytro's iPhone }
+\t\t{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }`;
+
+    const dests = parseDestinations(output);
+    expect(dests).toHaveLength(2);
+    expect(dests[0].platform).toBe("iOS");
+    expect(dests[0].name).toBe("Dmytro's iPhone");
+    expect(dests[1].id).toContain("placeholder");
+  });
+
+  it("returns empty for garbage input", () => {
+    expect(parseDestinations("nothing useful here")).toEqual([]);
+    expect(parseDestinations("")).toEqual([]);
+  });
+
+  it("parses mixed destination types", () => {
+    const output = `Available destinations for the "App" scheme:
+\t\t{ platform:macOS, arch:arm64, variant:Mac Catalyst, id:MAC-UUID, name:My Mac }
+\t\t{ platform:iOS Simulator, arch:arm64, id:SIM-UUID, OS:18.0, name:iPhone 16 }
+\t\t{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }`;
+
+    const dests = parseDestinations(output);
+    expect(dests).toHaveLength(3);
+    expect(dests.map((d) => d.platform)).toEqual(["macOS", "iOS Simulator", "iOS"]);
   });
 });

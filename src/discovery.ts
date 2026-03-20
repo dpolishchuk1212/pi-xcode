@@ -3,9 +3,9 @@
  */
 
 import nodePath from "node:path";
-import type { DiscoveryResult, ExecFn, Simulator, XcodeProject, XcodeScheme } from "./types.js";
-import { buildListArgs, buildSimctlListArgs } from "./commands.js";
-import { parseSchemeList, parseSimulatorList } from "./parsers.js";
+import type { Destination, DiscoveryResult, ExecFn, Simulator, XcodeProject, XcodeScheme } from "./types.js";
+import { buildListArgs, buildShowDestinationsArgs, buildSimctlListArgs } from "./commands.js";
+import { parseDestinations, parseSchemeList, parseSimulatorList } from "./parsers.js";
 
 /**
  * Find .xcodeproj, .xcworkspace, and Package.swift files in `cwd`.
@@ -103,6 +103,33 @@ export async function discoverSimulators(exec: ExecFn): Promise<Simulator[]> {
 
   if (result.code !== 0) return [];
   return parseSimulatorList(result.stdout);
+}
+
+/**
+ * Discover available destinations for a project/workspace + scheme.
+ * Runs `xcodebuild -showdestinations`.
+ */
+export async function discoverDestinations(
+  exec: ExecFn,
+  project: XcodeProject,
+  schemeName: string,
+): Promise<Destination[]> {
+  let args: string[];
+  let execCwd: string | undefined;
+
+  if (project.type === "package") {
+    args = buildShowDestinationsArgs({ scheme: schemeName });
+    execCwd = nodePath.dirname(project.path);
+  } else {
+    const flag = project.type === "workspace" ? "workspace" : "project";
+    args = buildShowDestinationsArgs({ [flag]: project.path, scheme: schemeName });
+  }
+
+  const result = await exec("xcodebuild", args, { timeout: 30_000, cwd: execCwd });
+  if (result.code !== 0) return [];
+
+  const combined = result.stdout + "\n" + result.stderr;
+  return parseDestinations(combined);
 }
 
 /**

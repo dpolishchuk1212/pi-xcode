@@ -2,8 +2,15 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import nodePath from "node:path";
 import type { ExecFn } from "./types.js";
 import { createState } from "./state.js";
-import { discoverProjects, discoverSchemes, discoverSimulators } from "./discovery.js";
-import { autoDetect, discoverAndSelect, updateProjectStatus } from "./resolve.js";
+import { discoverProjects, discoverSchemes } from "./discovery.js";
+import {
+  autoDetect,
+  discoverAndSelect,
+  formatDestinationLabel,
+  refreshDestinations,
+  updateDestinationStatus,
+  updateProjectStatus,
+} from "./resolve.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
 import { registerDiscoverTool } from "./tools/discover.js";
@@ -81,44 +88,57 @@ export default function (pi: ExtensionAPI) {
       const relativePath = nodePath.relative(cwd, selectedProject.path) || selectedProject.path;
       const schemeInfo = selectedScheme ? ` (scheme: ${selectedScheme.name})` : "";
       ctx.ui.notify(`Active project: ${relativePath}${schemeInfo}`, "info");
+
+      // Re-discover destinations for the new project/scheme
+      await refreshDestinations(exec, state, ctx.ui);
     },
   });
 
-  // ── /simulator command ───────────────────────────────────────────────
-  pi.registerCommand("simulator", {
-    description: "Select the active iOS Simulator for builds and runs",
+  // ── /destination command ─────────────────────────────────────────────
+  pi.registerCommand("destination", {
+    description: "Select the run destination (simulator, device, or Mac) for builds and runs",
     handler: async (_args, ctx) => {
-      const simulators = await discoverSimulators(exec);
-      const iosDevices = simulators.filter(
-        (s) => s.name.startsWith("iPhone") || s.name.startsWith("iPad"),
-      );
+      if (!state.activeProject || !state.activeScheme) {
+        ctx.ui.notify("No active project. Use /project first.", "error");
+        return;
+      }
 
-      if (iosDevices.length === 0) {
-        ctx.ui.notify("No iOS simulators found.", "error");
+      if (state.availableDestinations.length === 0) {
+        ctx.ui.notify("No destinations available for this project.", "error");
         return;
       }
 
       const theme = ctx.ui.theme;
-      const formatOption = (s: typeof iosDevices[number]) => {
-        let label = `${s.name} (${s.runtime})`;
-        if (s.state === "Booted") label += theme.fg("success", " ▶ booted");
-        if (state.activeSimulator?.udid === s.udid) label += theme.fg("accent", " ★ active");
-        label += " " + theme.fg("dim", s.udid);
+
+      // Group destinations by platform for display
+      const destinations = state.availableDestinations.filter((d) => !d.id.includes("placeholder"));
+
+      if (destinations.length === 0) {
+        ctx.ui.notify("No concrete destinations available (only placeholders found).", "error");
+        return;
+      }
+
+      const formatOption = (d: (typeof destinations)[number]) => {
+        let label = formatDestinationLabel(d);
+        if (state.activeDestination?.id === d.id) {
+          label += theme.fg("accent", " ★ active");
+        }
+        label += " " + theme.fg("dim", `[${d.platform}]`);
         return label;
       };
 
-      const options = iosDevices.map(formatOption);
+      const options = destinations.map(formatOption);
 
-      const choice = await ctx.ui.select("Select active simulator:", options);
+      const choice = await ctx.ui.select("Select run destination:", options);
       if (choice === undefined) return;
 
       const selectedIndex = options.indexOf(choice);
-      const selected = selectedIndex >= 0 ? iosDevices[selectedIndex] : undefined;
+      const selected = selectedIndex >= 0 ? destinations[selectedIndex] : undefined;
 
       if (selected) {
-        state.activeSimulator = selected;
-        ctx.ui.setStatus("xcode", `📱 ${selected.name} (${selected.runtime})`);
-        ctx.ui.notify(`Active simulator: ${selected.name} (${selected.runtime})`, "info");
+        state.activeDestination = selected;
+        updateDestinationStatus(state, ctx.ui);
+        ctx.ui.notify(`Run destination: ${formatDestinationLabel(selected)}`, "info");
       }
     },
   });
@@ -139,7 +159,7 @@ export default function (pi: ExtensionAPI) {
     const withoutBuiltIn = currentTools.filter((t) => !builtInXcodeTools.includes(t));
     pi.setActiveTools([...withoutBuiltIn, ...builtInXcodeTools]);
 
-    // Auto-detect project and simulator silently
+    // Auto-detect project, scheme, and destination silently
     await autoDetect(exec, cwd, state, ctx.ui);
   });
 }

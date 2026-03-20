@@ -5,6 +5,7 @@ import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
 import {
   buildBuildArgs,
+  buildDestinationString,
   buildShowSettingsArgs,
   buildSimulatorDestination,
   buildXctraceArgs,
@@ -58,12 +59,17 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
 
       const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
 
-      // ── Find simulator: explicit param > active simulator > auto-detect
+      // ── Find simulator: explicit param > active destination > auto-detect
       const simulators = await discoverSimulators(exec);
-      const simNameOrUdid = params.simulator ?? state.activeSimulator?.udid;
-      const sim = findSimulator(simulators, simNameOrUdid);
+
+      let simUdid = params.simulator;
+      if (!simUdid && state.activeDestination?.platform.includes("Simulator")) {
+        simUdid = state.activeDestination.id;
+      }
+
+      const sim = findSimulator(simulators, simUdid);
       if (!sim) {
-        throw new Error("No simulator found. Specify one explicitly.");
+        throw new Error("No simulator found. Select a simulator destination with /destination.");
       }
 
       const destination = buildSimulatorDestination(sim.udid);

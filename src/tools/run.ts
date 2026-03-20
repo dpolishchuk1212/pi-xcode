@@ -4,6 +4,7 @@ import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
 import {
   buildBuildArgs,
+  buildDestinationString,
   buildShowSettingsArgs,
   buildSimctlBootArgs,
   buildSimctlInstallArgs,
@@ -12,7 +13,7 @@ import {
 } from "../commands.js";
 import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
 import { discoverSimulators, findSimulator } from "../discovery.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
 
 export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
@@ -47,16 +48,22 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
 
       const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
 
-      // ── Find simulator: explicit param > active simulator > auto-detect
+      // ── Find simulator: explicit param > active destination > auto-detect
+      // The run tool needs an actual simulator for simctl boot/install/launch
       const simulators = await discoverSimulators(exec);
-      const simNameOrUdid = params.simulator ?? state.activeSimulator?.udid;
-      const sim = findSimulator(simulators, simNameOrUdid);
+
+      let simUdid = params.simulator;
+      if (!simUdid && state.activeDestination?.platform.includes("Simulator")) {
+        simUdid = state.activeDestination.id;
+      }
+
+      const sim = findSimulator(simulators, simUdid);
 
       if (!sim) {
         throw new Error(
           params.simulator
             ? `Simulator "${params.simulator}" not found. Available: ${simulators.map((s) => s.name).join(", ")}`
-            : "No available simulators found.",
+            : "No available simulator found. Select a simulator destination with /destination.",
         );
       }
 

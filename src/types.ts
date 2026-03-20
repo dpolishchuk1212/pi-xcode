@@ -33,6 +33,15 @@ export interface Simulator {
   isAvailable: boolean;
 }
 
+export interface Destination {
+  platform: string; // "iOS Simulator", "iOS", "macOS", "watchOS Simulator", etc.
+  id: string; // UDID or placeholder
+  name: string; // "iPhone 17", "Any iOS Device", "My Mac", etc.
+  os?: string; // "26.1"
+  arch?: string; // "arm64"
+  variant?: string; // "Designed for [iPad,iPhone]", "Mac Catalyst"
+}
+
 export interface DiscoveryResult {
   projects: XcodeProject[];
   schemes: XcodeScheme[];

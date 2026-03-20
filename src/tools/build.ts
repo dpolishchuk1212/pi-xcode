@@ -2,10 +2,9 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
-import { buildBuildArgs, buildSimulatorDestination } from "../commands.js";
+import { buildBuildArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
 import { parseBuildResult } from "../parsers.js";
-import { discoverSimulators, findSimulator } from "../discovery.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
 
 export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
@@ -44,23 +43,15 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
 
       // ── Resolve destination ──────────────────────────────────────────
       let destination = params.destination;
-      let simulatorName: string | undefined;
+      let destinationLabel: string | undefined;
 
       if (!destination && params.simulator) {
         destination = buildSimulatorDestination(params.simulator);
-        simulatorName = params.simulator;
+        destinationLabel = params.simulator;
       }
-      if (!destination && state.activeSimulator) {
-        destination = buildSimulatorDestination(state.activeSimulator.udid);
-        simulatorName = `${state.activeSimulator.name} (${state.activeSimulator.runtime})`;
-      }
-      if (!destination) {
-        const simulators = await discoverSimulators(exec);
-        const sim = findSimulator(simulators);
-        if (sim) {
-          destination = buildSimulatorDestination(sim.udid);
-          simulatorName = `${sim.name} (${sim.runtime})`;
-        }
+      if (!destination && state.activeDestination) {
+        destination = buildDestinationString(state.activeDestination);
+        destinationLabel = formatDestinationLabel(state.activeDestination);
       }
 
       const args = buildBuildArgs({
@@ -71,21 +62,21 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
         destination,
       });
 
-      const simLabel = simulatorName ? ` for ${simulatorName}` : "";
-      onUpdate?.({ content: [{ type: "text", text: `Building${simLabel}...` }], details: undefined });
+      const destLabel = destinationLabel ? ` for ${destinationLabel}` : "";
+      onUpdate?.({ content: [{ type: "text", text: `Building${destLabel}...` }], details: undefined });
 
       const result = await exec("xcodebuild", args, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
       const combined = result.stdout + "\n" + result.stderr;
       const buildResult = parseBuildResult(combined);
 
       const summary = formatBuildResult(buildResult);
-      const simulatorLine = simulatorName ? `\nSimulator: ${simulatorName}` : "";
+      const destLine = destinationLabel ? `\nDestination: ${destinationLabel}` : "";
 
       return {
-        content: [{ type: "text", text: summary + simulatorLine }],
+        content: [{ type: "text", text: summary + destLine }],
         details: {
           success: buildResult.success,
-          simulator: simulatorName,
+          destination: destinationLabel,
           errors: buildResult.issues.filter((i) => i.severity === "error"),
           warnings: buildResult.issues.filter((i) => i.severity === "warning"),
           command: `xcodebuild ${args.join(" ")}`,

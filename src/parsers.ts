@@ -1,4 +1,4 @@
-import type { BuildIssue, BuildResult, Simulator, TestCase, TestResult, XcodeScheme } from "./types.js";
+import type { BuildIssue, BuildResult, Destination, Simulator, TestCase, TestResult, XcodeScheme } from "./types.js";
 
 // ── Build output parsing ───────────────────────────────────────────────────
 
@@ -222,4 +222,97 @@ export function parseAppPath(output: string): string | undefined {
   }
 
   return undefined;
+}
+
+// ── Destination parsing ────────────────────────────────────────────────────
+
+/**
+ * Parses `xcodebuild -showdestinations` output. Each destination line looks like:
+ *
+ *   { platform:iOS Simulator, arch:arm64, id:UUID, OS:18.0, name:iPhone 17 }
+ *
+ * Fields are `key:value` pairs separated by `, `.
+ * The `variant` value may contain commas inside brackets (e.g. "Designed for [iPad,iPhone]"),
+ * so we use a smarter split that respects bracket nesting.
+ */
+const DEST_LINE_RE = /\{\s*(.+?)\s*\}/;
+
+export function parseDestinations(output: string): Destination[] {
+  const destinations: Destination[] = [];
+
+  for (const line of output.split("\n")) {
+    const m = line.match(DEST_LINE_RE);
+    if (!m) continue;
+
+    const raw = m[1];
+    const fields = splitDestinationFields(raw);
+
+    let platform = "";
+    let id = "";
+    let name = "";
+    let os: string | undefined;
+    let arch: string | undefined;
+    let variant: string | undefined;
+
+    for (const field of fields) {
+      const colonIdx = field.indexOf(":");
+      if (colonIdx === -1) continue;
+      const key = field.substring(0, colonIdx).trim().toLowerCase();
+      const value = field.substring(colonIdx + 1).trim();
+
+      switch (key) {
+        case "platform":
+          platform = value;
+          break;
+        case "id":
+          id = value;
+          break;
+        case "name":
+          name = value;
+          break;
+        case "os":
+          os = value;
+          break;
+        case "arch":
+          arch = value;
+          break;
+        case "variant":
+          variant = value;
+          break;
+      }
+    }
+
+    if (platform && id && name) {
+      destinations.push({ platform, id, name, os, arch, variant });
+    }
+  }
+
+  return destinations;
+}
+
+/**
+ * Split destination fields on `, ` but respect brackets `[...]`.
+ * Handles values like `variant:Designed for [iPad,iPhone]`.
+ */
+function splitDestinationFields(raw: string): string[] {
+  const fields: string[] = [];
+  let current = "";
+  let depth = 0;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "[") depth++;
+    else if (ch === "]") depth--;
+
+    if (ch === "," && depth === 0 && raw[i + 1] === " ") {
+      fields.push(current.trim());
+      current = "";
+      i++; // skip the space after comma
+    } else {
+      current += ch;
+    }
+  }
+
+  if (current.trim()) fields.push(current.trim());
+  return fields;
 }

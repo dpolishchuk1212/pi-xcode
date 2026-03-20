@@ -3,9 +3,9 @@
  */
 
 import nodePath from "node:path";
-import type { XcodeProject, XcodeScheme, ExecFn } from "./types.js";
+import type { Destination, XcodeProject, XcodeScheme, ExecFn } from "./types.js";
 import type { XcodeState } from "./state.js";
-import { discoverProjects, discoverSchemes, discoverSimulators, findSimulator } from "./discovery.js";
+import { discoverDestinations, discoverProjects, discoverSchemes } from "./discovery.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -177,10 +177,94 @@ export function updateProjectStatus(cwd: string, state: XcodeState, ui: ResolveU
   ui.setStatus("xcode-project", `${icon} ${label}`);
 }
 
+// ── Destination helpers ────────────────────────────────────────────────────
+
+/**
+ * Discover destinations for the active project/scheme and store them.
+ * Auto-selects the best destination (prefer booted iPhone sim, then latest iPhone sim).
+ */
+export async function refreshDestinations(
+  exec: ExecFn,
+  state: XcodeState,
+  ui: Pick<ResolveUI, "setStatus">,
+): Promise<void> {
+  if (!state.activeProject || !state.activeScheme) {
+    state.availableDestinations = [];
+    state.activeDestination = undefined;
+    ui.setStatus("xcode", undefined);
+    return;
+  }
+
+  const destinations = await discoverDestinations(exec, state.activeProject, state.activeScheme.name);
+  state.availableDestinations = destinations;
+
+  // Auto-select best destination: prefer iPhone simulator, then iPad, then any simulator, then first
+  const best = pickBestDestination(destinations);
+  state.activeDestination = best;
+  updateDestinationStatus(state, ui);
+}
+
+/**
+ * Pick the best destination from a list.
+ * Prefers: iPhone simulator → iPad simulator → any simulator → first available.
+ */
+export function pickBestDestination(destinations: Destination[]): Destination | undefined {
+  if (destinations.length === 0) return undefined;
+
+  // Filter out placeholder destinations
+  const real = destinations.filter((d) => !d.id.includes("placeholder"));
+  if (real.length === 0) return destinations[0];
+
+  // Prefer simulators (easier for dev)
+  const sims = real.filter((d) => d.platform.includes("Simulator"));
+
+  if (sims.length > 0) {
+    // Prefer iPhones, then sort by OS descending (latest first)
+    const iphones = sims.filter((d) => d.name.startsWith("iPhone"));
+    if (iphones.length > 0) {
+      return iphones.sort((a, b) => (b.os ?? "").localeCompare(a.os ?? ""))[0];
+    }
+    const ipads = sims.filter((d) => d.name.startsWith("iPad"));
+    if (ipads.length > 0) {
+      return ipads.sort((a, b) => (b.os ?? "").localeCompare(a.os ?? ""))[0];
+    }
+    return sims[0];
+  }
+
+  return real[0];
+}
+
+/**
+ * Update the status bar with the active destination.
+ */
+export function updateDestinationStatus(
+  state: XcodeState,
+  ui: Pick<ResolveUI, "setStatus">,
+): void {
+  if (!state.activeDestination) {
+    ui.setStatus("xcode", undefined);
+    return;
+  }
+
+  const d = state.activeDestination;
+  const osLabel = d.os ? ` (${d.platform.replace(" Simulator", "")} ${d.os})` : "";
+  ui.setStatus("xcode", `📱 ${d.name}${osLabel}`);
+}
+
+/**
+ * Format a destination for display in a picker list.
+ */
+export function formatDestinationLabel(d: Destination): string {
+  const parts = [d.name];
+  if (d.os) parts.push(`(${d.os})`);
+  if (d.variant) parts.push(`— ${d.variant}`);
+  return parts.join(" ");
+}
+
 // ── Silent auto-detect (session start) ─────────────────────────────────────
 
 /**
- * Silently auto-detect the best project, scheme, and simulator at session start.
+ * Silently auto-detect the best project, scheme, and destination at session start.
  * Picks the first match without prompting. Updates state and status bar.
  */
 export async function autoDetect(
@@ -205,14 +289,8 @@ export async function autoDetect(
     updateProjectStatus(cwd, state, ui as ResolveUI);
   }
 
-  // ── Simulator ────────────────────────────────────────────────────────
-  const simulators = await discoverSimulators(exec);
-  const sim = findSimulator(simulators);
-
-  if (sim) {
-    state.activeSimulator = sim;
-    ui.setStatus("xcode", `📱 ${sim.name} (${sim.runtime})`);
-  }
+  // ── Destinations for selected project/scheme ─────────────────────────
+  await refreshDestinations(exec, state, ui);
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

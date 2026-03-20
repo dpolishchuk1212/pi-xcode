@@ -176,3 +176,26 @@ export function buildSimulatorDestination(simulator: string): string {
   }
   return `platform=iOS Simulator,name=${simulator}`;
 }
+
+/**
+ * `-showdestinations` arguments.
+ */
+export function buildShowDestinationsArgs(opts: {
+  project?: string;
+  workspace?: string;
+  scheme?: string;
+}): string[] {
+  const args: string[] = [];
+  if (opts.workspace) args.push("-workspace", opts.workspace);
+  else if (opts.project) args.push("-project", opts.project);
+  if (opts.scheme) args.push("-scheme", opts.scheme);
+  args.push("-showdestinations");
+  return args;
+}
+
+/**
+ * Build an xcodebuild `-destination` string from a Destination object.
+ */
+export function buildDestinationString(dest: { platform: string; id: string }): string {
+  return `platform=${dest.platform},id=${dest.id}`;
+}
