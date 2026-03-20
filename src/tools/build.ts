@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
+import { startOperation, clearOperation } from "../state.js";
 import { buildBuildArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
 import { parseBuildResult } from "../parsers.js";
 import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel } from "../resolve.js";
@@ -67,23 +68,29 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       const destLabel = destinationLabel ? ` for ${destinationLabel}` : "";
       onUpdate?.({ content: [{ type: "text", text: `Building${destLabel}...` }], details: undefined });
 
-      const result = await exec("xcodebuild", args, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
-      const combined = result.stdout + "\n" + result.stderr;
-      const buildResult = parseBuildResult(combined);
+      const combinedSignal = startOperation(state, `Build ${resolved.scheme ?? "project"} (${configuration})${destLabel}`, signal);
 
-      const summary = formatBuildResult(buildResult);
-      const destLine = destinationLabel ? `\nDestination: ${destinationLabel}` : "";
+      try {
+        const result = await exec("xcodebuild", args, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+        const combined = result.stdout + "\n" + result.stderr;
+        const buildResult = parseBuildResult(combined);
 
-      return {
-        content: [{ type: "text", text: summary + destLine }],
-        details: {
-          success: buildResult.success,
-          destination: destinationLabel,
-          errors: buildResult.issues.filter((i) => i.severity === "error"),
-          warnings: buildResult.issues.filter((i) => i.severity === "warning"),
-          command: `xcodebuild ${args.join(" ")}`,
-        },
-      };
+        const summary = formatBuildResult(buildResult);
+        const destLine = destinationLabel ? `\nDestination: ${destinationLabel}` : "";
+
+        return {
+          content: [{ type: "text", text: summary + destLine }],
+          details: {
+            success: buildResult.success,
+            destination: destinationLabel,
+            errors: buildResult.issues.filter((i) => i.severity === "error"),
+            warnings: buildResult.issues.filter((i) => i.severity === "warning"),
+            command: `xcodebuild ${args.join(" ")}`,
+          },
+        };
+      } finally {
+        clearOperation(state);
+      }
     },
   });
 }

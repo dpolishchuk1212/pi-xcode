@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { Destination, ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
+import { startOperation, clearOperation } from "../state.js";
 import {
   buildBuildArgs,
   buildDestinationString,
@@ -82,6 +83,8 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       const destLabel = formatDestinationLabel(dest);
       const destType = destinationTypeLabel(dest);
 
+      const combinedSignal = startOperation(state, `Run ${resolved.scheme ?? "project"} on ${destLabel}`, signal);
+
       // ── Build ────────────────────────────────────────────────────────
       if (!params.skipBuild) {
         state.appStatus = "building";
@@ -97,11 +100,12 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
 
         onUpdate?.({ content: [{ type: "text", text: `Building ${resolved.scheme ?? "project"} (${configuration}) for ${destLabel}...` }], details: undefined });
 
-        const buildExec = await exec("xcodebuild", buildCmdArgs, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+        const buildExec = await exec("xcodebuild", buildCmdArgs, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
         const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
         const buildResult = parseBuildResult(buildOutput);
 
         if (!buildResult.success) {
+          clearOperation(state);
           state.appStatus = "idle";
           updateStatusBar(cwd, state, ctx.ui);
           return {
@@ -122,12 +126,13 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
         destination: destinationStr,
       });
 
-      const settingsResult = await exec("xcodebuild", settingsArgs, { signal, timeout: 30_000, cwd: xcodeArgs.execCwd });
+      const settingsResult = await exec("xcodebuild", settingsArgs, { signal: combinedSignal, timeout: 30_000, cwd: xcodeArgs.execCwd });
       const settingsOutput = settingsResult.stdout;
       const bundleId = parseBundleId(settingsOutput);
       const appPath = parseAppPath(settingsOutput);
 
       if (!bundleId || !appPath) {
+        clearOperation(state);
         state.appStatus = "idle";
         updateStatusBar(cwd, state, ctx.ui);
         throw new Error(
@@ -149,11 +154,14 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
 
       // ── Install ──────────────────────────────────────────────────────
       onUpdate?.({ content: [{ type: "text", text: `Installing on ${destLabel}...` }], details: undefined });
-      await installApp(exec, dest, appPath, signal);
+      await installApp(exec, dest, appPath, combinedSignal);
 
       // ── Launch ───────────────────────────────────────────────────────
       onUpdate?.({ content: [{ type: "text", text: `Launching ${bundleId}...` }], details: undefined });
-      const launchResult = await launchApp(exec, dest, bundleId, appPath, signal);
+      const launchResult = await launchApp(exec, dest, bundleId, appPath, combinedSignal);
+
+      // Operation complete (build+install+launch phase is done)
+      clearOperation(state);
 
       if (launchResult.success) {
         state.appStatus = "running";

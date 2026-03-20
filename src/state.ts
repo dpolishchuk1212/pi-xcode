@@ -12,9 +12,13 @@ export interface XcodeState {
   availableDestinations: Destination[];
   activeConfiguration: string | undefined;
   availableConfigurations: string[];
-  appStatus: "idle" | "building" | "running" | "testing";
+  appStatus: "idle" | "building" | "running" | "testing" | "profiling";
   /** Cleanup function to stop the current app lifecycle monitor. */
   stopAppMonitor: (() => void) | undefined;
+  /** AbortController for the currently active operation (build/test/run/profile). */
+  activeAbortController: AbortController | undefined;
+  /** Label describing the currently active operation (for stop messages). */
+  activeOperationLabel: string | undefined;
 }
 
 export function createState(): XcodeState {
@@ -28,5 +32,34 @@ export function createState(): XcodeState {
     availableConfigurations: [],
     appStatus: "idle",
     stopAppMonitor: undefined,
+    activeAbortController: undefined,
+    activeOperationLabel: undefined,
   };
+}
+
+/**
+ * Start tracking an active operation. Returns a combined AbortSignal that
+ * fires when either the framework signal or our own abort controller fires.
+ */
+export function startOperation(state: XcodeState, label: string, frameworkSignal?: AbortSignal): AbortSignal {
+  // Abort any existing operation first
+  state.activeAbortController?.abort();
+
+  const controller = new AbortController();
+  state.activeAbortController = controller;
+  state.activeOperationLabel = label;
+
+  // Combine framework signal with our own controller
+  if (frameworkSignal) {
+    return AbortSignal.any([frameworkSignal, controller.signal]);
+  }
+  return controller.signal;
+}
+
+/**
+ * Clear the active operation tracking (called when operation completes).
+ */
+export function clearOperation(state: XcodeState): void {
+  state.activeAbortController = undefined;
+  state.activeOperationLabel = undefined;
 }

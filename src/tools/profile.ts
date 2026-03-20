@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
+import { startOperation, clearOperation } from "../state.js";
 import {
   buildBuildArgs,
   buildDestinationString,
@@ -86,7 +87,10 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
 
       onUpdate?.({ content: [{ type: "text", text: `Building (${config}) for profiling...` }], details: undefined });
 
-      const buildExec = await exec("xcodebuild", buildCmdArgs, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+      const combinedSignal = startOperation(state, `Profile ${resolved.scheme ?? "project"} (${params.template ?? "Time Profiler"})`, signal);
+
+      try {
+      const buildExec = await exec("xcodebuild", buildCmdArgs, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
       const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
       const buildResult = parseBuildResult(buildOutput);
 
@@ -106,7 +110,7 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
         destination,
       });
 
-      const settingsResult = await exec("xcodebuild", settingsArgs, { signal, timeout: 30_000, cwd: xcodeArgs.execCwd });
+      const settingsResult = await exec("xcodebuild", settingsArgs, { signal: combinedSignal, timeout: 30_000, cwd: xcodeArgs.execCwd });
       const appPath = parseAppPath(settingsResult.stdout);
 
       if (!appPath) {
@@ -129,7 +133,7 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
         details: undefined,
       });
 
-      const profileResult = await exec("xcrun", xctraceArgs, { signal, timeout: (timeLimit + 60) * 1000 });
+      const profileResult = await exec("xcrun", xctraceArgs, { signal: combinedSignal, timeout: (timeLimit + 60) * 1000 });
 
       // xctrace writes the .trace path to stderr
       const traceMatch = profileResult.stderr.match(/Output file saved as (.+\.trace)/);
@@ -156,6 +160,9 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
           simulator: sim.name,
         },
       };
+      } finally {
+        clearOperation(state);
+      }
     },
   });
 }

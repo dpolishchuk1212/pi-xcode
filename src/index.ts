@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import nodePath from "node:path";
 import type { ExecFn } from "./types.js";
-import { createState } from "./state.js";
+import { createState, startOperation, clearOperation } from "./state.js";
 import { discoverProjects } from "./discovery.js";
 import {
   autoDetect,
@@ -22,6 +22,7 @@ import { registerDiscoverTool } from "./tools/discover.js";
 import { registerRunTool } from "./tools/run.js";
 import { registerTestTool } from "./tools/test.js";
 import { registerProfileTool } from "./tools/profile.js";
+import { registerStopTool, stopActiveOperation } from "./tools/stop.js";
 
 function createExec(pi: ExtensionAPI): ExecFn {
   return (command, args, options) => pi.exec(command, args, options);
@@ -241,13 +242,18 @@ export default function (pi: ExtensionAPI) {
       updateStatusBar(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Building ${state.activeScheme.name} (${configuration})${destSuffix}...`, "info");
 
-      const result = await exec("xcodebuild", args, { timeout: 600_000, cwd: xcodeArgs.execCwd });
-      const combined = result.stdout + "\n" + result.stderr;
-      const buildResult = parseBuildResult(combined);
+      const signal = startOperation(state, `Build ${state.activeScheme.name} (${configuration})${destSuffix}`);
+      try {
+        const result = await exec("xcodebuild", args, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+        const combined = result.stdout + "\n" + result.stderr;
+        const buildResult = parseBuildResult(combined);
 
-      state.appStatus = "idle";
-      updateStatusBar(ctx.cwd, state, ctx.ui);
-      ctx.ui.notify(formatBuildResult(buildResult), buildResult.success ? "info" : "error");
+        ctx.ui.notify(formatBuildResult(buildResult), buildResult.success ? "info" : "error");
+      } finally {
+        clearOperation(state);
+        state.appStatus = "idle";
+        updateStatusBar(ctx.cwd, state, ctx.ui);
+      }
     },
   });
 
@@ -283,81 +289,93 @@ export default function (pi: ExtensionAPI) {
       const destLabel = formatDestinationLabel(dest);
       const destType = destinationTypeLabel(dest);
 
-      // ── Build ──────────────────────────────────────────────────────
-      state.appStatus = "building";
-      updateStatusBar(ctx.cwd, state, ctx.ui);
-      ctx.ui.notify(`Building ${scheme} (${configuration}) for ${destLabel}...`, "info");
+      const signal = startOperation(state, `Run ${scheme} on ${destLabel}`);
 
-      const buildCmdArgs = buildBuildArgs({
-        project: xcodeArgs.projectFlag,
-        workspace: xcodeArgs.workspaceFlag,
-        scheme,
-        configuration,
-        destination: destinationStr,
-      });
-
-      const buildExec = await exec("xcodebuild", buildCmdArgs, { timeout: 600_000, cwd: xcodeArgs.execCwd });
-      const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
-      const buildResult = parseBuildResult(buildOutput);
-
-      if (!buildResult.success) {
-        state.appStatus = "idle";
+      try {
+        // ── Build ──────────────────────────────────────────────────────
+        state.appStatus = "building";
         updateStatusBar(ctx.cwd, state, ctx.ui);
-        ctx.ui.notify(formatBuildResult(buildResult), "error");
-        return;
-      }
+        ctx.ui.notify(`Building ${scheme} (${configuration}) for ${destLabel}...`, "info");
 
-      // ── Resolve bundle ID & app path ───────────────────────────────
-      const settingsArgs = buildShowSettingsArgs({
-        project: xcodeArgs.projectFlag,
-        workspace: xcodeArgs.workspaceFlag,
-        scheme,
-        configuration,
-        destination: destinationStr,
-      });
+        const buildCmdArgs = buildBuildArgs({
+          project: xcodeArgs.projectFlag,
+          workspace: xcodeArgs.workspaceFlag,
+          scheme,
+          configuration,
+          destination: destinationStr,
+        });
 
-      const settingsResult = await exec("xcodebuild", settingsArgs, { timeout: 30_000, cwd: xcodeArgs.execCwd });
-      const bundleId = parseBundleId(settingsResult.stdout);
-      const appPath = parseAppPath(settingsResult.stdout);
+        const buildExec = await exec("xcodebuild", buildCmdArgs, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+        const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
+        const buildResult = parseBuildResult(buildOutput);
 
-      if (!bundleId || !appPath) {
-        state.appStatus = "idle";
-        updateStatusBar(ctx.cwd, state, ctx.ui);
-        ctx.ui.notify("Could not determine bundle ID or app path. Make sure the scheme builds an app target.", "error");
-        return;
-      }
-
-      // ── Stop previous monitor → Terminate → Boot → Install → Launch ─
-      state.stopAppMonitor?.();
-      state.stopAppMonitor = undefined;
-
-      await terminateApp(exec, dest, bundleId, appPath);
-      await ensureDestinationReady(exec, dest);
-
-      ctx.ui.notify(`Installing on ${destLabel}...`, "info");
-      await installApp(exec, dest, appPath);
-
-      ctx.ui.notify(`Launching ${bundleId}...`, "info");
-      const launchResult = await launchApp(exec, dest, bundleId, appPath);
-
-      if (launchResult.success) {
-        state.appStatus = "running";
-        updateStatusBar(ctx.cwd, state, ctx.ui);
-
-        // Start monitoring — auto-update status when app exits
-        if (launchResult.pid) {
-          state.stopAppMonitor = monitorAppLifecycle(exec, launchResult.pid, () => {
-            state.appStatus = "idle";
-            state.stopAppMonitor = undefined;
-            updateStatusBar(ctx.cwd, state, ctx.ui);
-          });
+        if (!buildResult.success) {
+          state.appStatus = "idle";
+          updateStatusBar(ctx.cwd, state, ctx.ui);
+          ctx.ui.notify(formatBuildResult(buildResult), "error");
+          return;
         }
 
-        ctx.ui.notify(`✅ ${scheme} launched on ${destLabel} [${destType}]`, "info");
-      } else {
+        // ── Resolve bundle ID & app path ───────────────────────────────
+        const settingsArgs = buildShowSettingsArgs({
+          project: xcodeArgs.projectFlag,
+          workspace: xcodeArgs.workspaceFlag,
+          scheme,
+          configuration,
+          destination: destinationStr,
+        });
+
+        const settingsResult = await exec("xcodebuild", settingsArgs, { signal, timeout: 30_000, cwd: xcodeArgs.execCwd });
+        const bundleId = parseBundleId(settingsResult.stdout);
+        const appPath = parseAppPath(settingsResult.stdout);
+
+        if (!bundleId || !appPath) {
+          state.appStatus = "idle";
+          updateStatusBar(ctx.cwd, state, ctx.ui);
+          ctx.ui.notify("Could not determine bundle ID or app path. Make sure the scheme builds an app target.", "error");
+          return;
+        }
+
+        // ── Stop previous monitor → Terminate → Boot → Install → Launch ─
+        state.stopAppMonitor?.();
+        state.stopAppMonitor = undefined;
+
+        await terminateApp(exec, dest, bundleId, appPath);
+        await ensureDestinationReady(exec, dest);
+
+        ctx.ui.notify(`Installing on ${destLabel}...`, "info");
+        await installApp(exec, dest, appPath, signal);
+
+        ctx.ui.notify(`Launching ${bundleId}...`, "info");
+        const launchResult = await launchApp(exec, dest, bundleId, appPath, signal);
+
+        // Clear the operation before entering "running" state (build+launch phase done)
+        clearOperation(state);
+
+        if (launchResult.success) {
+          state.appStatus = "running";
+          updateStatusBar(ctx.cwd, state, ctx.ui);
+
+          // Start monitoring — auto-update status when app exits
+          if (launchResult.pid) {
+            state.stopAppMonitor = monitorAppLifecycle(exec, launchResult.pid, () => {
+              state.appStatus = "idle";
+              state.stopAppMonitor = undefined;
+              updateStatusBar(ctx.cwd, state, ctx.ui);
+            });
+          }
+
+          ctx.ui.notify(`✅ ${scheme} launched on ${destLabel} [${destType}]`, "info");
+        } else {
+          state.appStatus = "idle";
+          updateStatusBar(ctx.cwd, state, ctx.ui);
+          ctx.ui.notify(`❌ Failed to launch on ${destLabel}: ${launchResult.error ?? "unknown error"}`, "error");
+        }
+      } catch (e) {
+        clearOperation(state);
         state.appStatus = "idle";
         updateStatusBar(ctx.cwd, state, ctx.ui);
-        ctx.ui.notify(`❌ Failed to launch on ${destLabel}: ${launchResult.error ?? "unknown error"}`, "error");
+        throw e;
       }
     },
   });
@@ -411,27 +429,40 @@ export default function (pi: ExtensionAPI) {
       updateStatusBar(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Testing ${state.activeScheme.name}${filterLabel}${planLabel} on ${destLabel}...`, "info");
 
-      const result = await exec("xcodebuild", testArgs, { timeout: 1_200_000, cwd: xcodeArgs.execCwd });
-      const combined = result.stdout + "\n" + result.stderr;
-      const testResult = parseTestResult(combined);
+      const signal = startOperation(state, `Test ${state.activeScheme.name}${filterLabel}${planLabel}`);
+      try {
+        const result = await exec("xcodebuild", testArgs, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
+        const combined = result.stdout + "\n" + result.stderr;
+        const testResult = parseTestResult(combined);
 
-      state.appStatus = "idle";
-      updateStatusBar(ctx.cwd, state, ctx.ui);
-
-      if (testResult.success) {
-        ctx.ui.notify(`✅ All ${testResult.total} tests passed (${testResult.duration.toFixed(1)}s)`, "info");
-      } else {
-        // Show failed tests
-        const failedCases = testResult.cases.filter((c) => !c.passed);
-        const lines = [`❌ ${testResult.failed}/${testResult.total} tests failed (${testResult.duration.toFixed(1)}s)`];
-        for (const tc of failedCases) {
-          lines.push(`  ✗ ${tc.suite}.${tc.name}`);
-          if (tc.failureMessage) {
-            lines.push(`    ${tc.failureMessage}`);
+        if (testResult.success) {
+          ctx.ui.notify(`✅ All ${testResult.total} tests passed (${testResult.duration.toFixed(1)}s)`, "info");
+        } else {
+          // Show failed tests
+          const failedCases = testResult.cases.filter((c) => !c.passed);
+          const lines = [`❌ ${testResult.failed}/${testResult.total} tests failed (${testResult.duration.toFixed(1)}s)`];
+          for (const tc of failedCases) {
+            lines.push(`  ✗ ${tc.suite}.${tc.name}`);
+            if (tc.failureMessage) {
+              lines.push(`    ${tc.failureMessage}`);
+            }
           }
+          ctx.ui.notify(lines.join("\n"), "error");
         }
-        ctx.ui.notify(lines.join("\n"), "error");
+      } finally {
+        clearOperation(state);
+        state.appStatus = "idle";
+        updateStatusBar(ctx.cwd, state, ctx.ui);
       }
+    },
+  });
+
+  // ── /stop command ─────────────────────────────────────────────────────
+  pi.registerCommand("stop", {
+    description: "Stop the currently running build, test, run, or profile operation",
+    handler: async (_args, ctx) => {
+      const result = await stopActiveOperation(exec, ctx.cwd, state, ctx.ui);
+      ctx.ui.notify(result.content[0].text, result.details.stopped ? "info" : "error");
     },
   });
 
@@ -444,9 +475,10 @@ export default function (pi: ExtensionAPI) {
     registerRunTool(pi, exec, sessionCwd, state);
     registerTestTool(pi, exec, sessionCwd, state);
     registerProfileTool(pi, exec, sessionCwd, state);
+    registerStopTool(pi, exec, sessionCwd, state);
 
     // Replace built-in xcode tools with our versions
-    const builtInXcodeTools = ["xcode_build", "xcode_clean", "xcode_discover", "xcode_run", "xcode_test", "xcode_profile"];
+    const builtInXcodeTools = ["xcode_build", "xcode_clean", "xcode_discover", "xcode_run", "xcode_test", "xcode_profile", "xcode_stop"];
     const currentTools = pi.getActiveTools();
     const withoutBuiltIn = currentTools.filter((t) => !builtInXcodeTools.includes(t));
     pi.setActiveTools([...withoutBuiltIn, ...builtInXcodeTools]);
