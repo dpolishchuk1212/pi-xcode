@@ -12,7 +12,7 @@ export interface XcodeState {
   availableDestinations: Destination[];
   activeConfiguration: string | undefined;
   availableConfigurations: string[];
-  appStatus: "idle" | "building" | "running";
+  appStatus: "idle" | "building" | "running" | "testing";
   /** Cleanup function to stop the current app lifecycle monitor. */
   stopAppMonitor: (() => void) | undefined;
 }

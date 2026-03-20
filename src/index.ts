@@ -12,9 +12,9 @@ import {
   refreshSchemes,
   updateStatusBar,
 } from "./resolve.js";
-import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs } from "./commands.js";
-import { parseAppPath, parseBuildResult, parseBundleId } from "./parsers.js";
-import { formatBuildResult } from "./format.js";
+import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs, buildTestArgs } from "./commands.js";
+import { parseAppPath, parseBuildResult, parseBundleId, parseTestResult } from "./parsers.js";
+import { formatBuildResult, formatTestResult } from "./format.js";
 import { terminateApp, ensureDestinationReady, installApp, launchApp, monitorAppLifecycle, destinationTypeLabel } from "./runner.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
@@ -358,6 +358,79 @@ export default function (pi: ExtensionAPI) {
         state.appStatus = "idle";
         updateStatusBar(ctx.cwd, state, ctx.ui);
         ctx.ui.notify(`❌ Failed to launch on ${destLabel}: ${launchResult.error ?? "unknown error"}`, "error");
+      }
+    },
+  });
+
+  // ── /test command ────────────────────────────────────────────────────
+  pi.registerCommand("test", {
+    description: "Run tests for the active project. Usage: /test [testFilter] [--plan <testPlan>]",
+    handler: async (args, ctx) => {
+      if (!state.activeProject || !state.activeScheme) {
+        ctx.ui.notify("No active project/scheme. Use /project first.", "error");
+        return;
+      }
+
+      const dest = state.activeDestination;
+      if (!dest) {
+        ctx.ui.notify("No destination available. Use /destination to select one.", "error");
+        return;
+      }
+
+      // Parse arguments: /test [testFilter] [--plan <testPlan>]
+      const parts = (args?.trim() ?? "").split(/\s+/).filter(Boolean);
+      let testPlan: string | undefined;
+      const onlyTesting: string[] = [];
+
+      for (let i = 0; i < parts.length; i++) {
+        if (parts[i] === "--plan" && i + 1 < parts.length) {
+          testPlan = parts[++i];
+        } else {
+          onlyTesting.push(parts[i]);
+        }
+      }
+
+      const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
+      const configuration = state.activeConfiguration ?? "Debug";
+      const destinationStr = buildDestinationString(dest);
+      const destLabel = formatDestinationLabel(dest);
+
+      const testArgs = buildTestArgs({
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme: state.activeScheme.name,
+        configuration,
+        destination: destinationStr,
+        testPlan,
+        onlyTesting: onlyTesting.length > 0 ? onlyTesting : undefined,
+      });
+
+      const filterLabel = onlyTesting.length > 0 ? ` (${onlyTesting.join(", ")})` : "";
+      const planLabel = testPlan ? ` [plan: ${testPlan}]` : "";
+      state.appStatus = "testing";
+      updateStatusBar(ctx.cwd, state, ctx.ui);
+      ctx.ui.notify(`Testing ${state.activeScheme.name}${filterLabel}${planLabel} on ${destLabel}...`, "info");
+
+      const result = await exec("xcodebuild", testArgs, { timeout: 1_200_000, cwd: xcodeArgs.execCwd });
+      const combined = result.stdout + "\n" + result.stderr;
+      const testResult = parseTestResult(combined);
+
+      state.appStatus = "idle";
+      updateStatusBar(ctx.cwd, state, ctx.ui);
+
+      if (testResult.success) {
+        ctx.ui.notify(`✅ All ${testResult.total} tests passed (${testResult.duration.toFixed(1)}s)`, "info");
+      } else {
+        // Show failed tests
+        const failedCases = testResult.cases.filter((c) => !c.passed);
+        const lines = [`❌ ${testResult.failed}/${testResult.total} tests failed (${testResult.duration.toFixed(1)}s)`];
+        for (const tc of failedCases) {
+          lines.push(`  ✗ ${tc.suite}.${tc.name}`);
+          if (tc.failureMessage) {
+            lines.push(`    ${tc.failureMessage}`);
+          }
+        }
+        ctx.ui.notify(lines.join("\n"), "error");
       }
     },
   });

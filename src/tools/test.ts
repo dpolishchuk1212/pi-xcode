@@ -4,7 +4,7 @@ import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
 import { buildTestArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
 import { parseTestResult } from "../parsers.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs, updateStatusBar } from "../resolve.js";
 import { formatTestResult } from "../format.js";
 
 export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
@@ -68,9 +68,18 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
 
       onUpdate?.({ content: [{ type: "text", text: `Running tests: xcodebuild ${args.join(" ")}` }], details: undefined });
 
-      const result = await exec("xcodebuild", args, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
-      const combined = result.stdout + "\n" + result.stderr;
-      const testResult = parseTestResult(combined);
+      state.appStatus = "testing";
+      updateStatusBar(cwd, state, ctx.ui);
+
+      let testResult;
+      try {
+        const result = await exec("xcodebuild", args, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
+        const combined = result.stdout + "\n" + result.stderr;
+        testResult = parseTestResult(combined);
+      } finally {
+        state.appStatus = "idle";
+        updateStatusBar(cwd, state, ctx.ui);
+      }
 
       return {
         content: [{ type: "text", text: formatTestResult(testResult) }],

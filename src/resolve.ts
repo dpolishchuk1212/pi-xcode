@@ -273,6 +273,8 @@ export function updateStatusBar(
     parts.push(theme.fg("warning", "⏳ Building"));
   } else if (state.appStatus === "running") {
     parts.push(theme.fg("accent", "▶ Running"));
+  } else if (state.appStatus === "testing") {
+    parts.push(theme.fg("warning", "🧪 Testing"));
   }
 
   if (parts.length === 0) {
