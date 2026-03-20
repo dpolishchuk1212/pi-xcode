@@ -297,19 +297,28 @@ export function autoSelect(
     if (scheme) return { project, scheme };
   }
 
-  // Prefer app schemes, then non-test/non-framework, then first
+  // Derive project base name for tiebreaking (e.g. "Letyco.xcworkspace" → "Letyco")
+  const baseName = nodePath.basename(project.path).replace(/\.(xcworkspace|xcodeproj|swift)$/, "");
   const schemes = discovery.schemes;
-  const appScheme = schemes.find((s) => s.productType === "app");
-  if (appScheme) return { project, scheme: appScheme };
+
+  // Prefer app schemes, with project-name match as tiebreaker
+  const appSchemes = schemes.filter((s) => s.productType === "app");
+  if (appSchemes.length > 0) {
+    const matching = appSchemes.find((s) => s.name === baseName);
+    return { project, scheme: matching ?? appSchemes[0] };
+  }
 
   const extScheme = schemes.find((s) => s.productType === "extension");
   if (extScheme) return { project, scheme: extScheme };
 
-  const nonTestNonFramework = schemes.find((s) => {
+  const nonTestNonFramework = schemes.filter((s) => {
     const lower = s.name.toLowerCase();
     return !lower.includes("test") && !lower.includes("framework");
   });
-  if (nonTestNonFramework) return { project, scheme: nonTestNonFramework };
+  if (nonTestNonFramework.length > 0) {
+    const matching = nonTestNonFramework.find((s) => s.name === baseName);
+    return { project, scheme: matching ?? nonTestNonFramework[0] };
+  }
 
   return { project, scheme: schemes[0] };
 }

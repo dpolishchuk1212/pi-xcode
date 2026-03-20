@@ -53,7 +53,7 @@ export async function resolveProjectAndScheme(
     let schemeName = explicitParams.scheme;
     if (!schemeName) {
       const schemes = await discoverSchemes(exec, projectPath);
-      schemeName = pickBestScheme(schemes)?.name;
+      schemeName = pickBestScheme(schemes, projectBaseName(projectPath))?.name;
     }
 
     return { project: { path: projectPath, type }, scheme: schemeName };
@@ -135,8 +135,8 @@ export async function refreshSchemes(
   const schemes = await discoverSchemes(exec, state.activeProject.path);
   state.availableSchemes = schemes;
 
-  // Auto-select: prefer app schemes, then non-test/non-framework, then first
-  state.activeScheme = pickBestScheme(schemes);
+  // Auto-select: prefer app schemes matching project name, then any app, then non-test
+  state.activeScheme = pickBestScheme(schemes, projectBaseName(state.activeProject.path));
 
   // Refresh destinations and configurations in parallel
   await Promise.all([
@@ -197,16 +197,27 @@ export async function refreshDestinations(
 /**
  * Pick the best scheme from a list.
  * Priority:
- *   1. App schemes (productType === "app")
- *   2. Non-test, non-framework schemes (fallback heuristic by name)
- *   3. First scheme
+ *   1. App scheme whose name matches the project/workspace name
+ *   2. Any app scheme (productType === "app")
+ *   3. Extension schemes (also executable)
+ *   4. Non-test, non-framework schemes (fallback heuristic by name)
+ *   5. First scheme
+ *
+ * @param projectName - Optional project/workspace base name (e.g. "Letyco") for tiebreaking
  */
-export function pickBestScheme(schemes: XcodeScheme[]): XcodeScheme | undefined {
+export function pickBestScheme(schemes: XcodeScheme[], projectName?: string): XcodeScheme | undefined {
   if (schemes.length === 0) return undefined;
 
   // 1. Prefer app schemes (identified from .xcscheme file)
   const appSchemes = schemes.filter((s) => s.productType === "app");
-  if (appSchemes.length > 0) return appSchemes[0];
+  if (appSchemes.length > 0) {
+    // Among app schemes, prefer the one matching the project name
+    if (projectName) {
+      const matching = appSchemes.find((s) => s.name === projectName);
+      if (matching) return matching;
+    }
+    return appSchemes[0];
+  }
 
   // 2. Prefer extension schemes (also executable)
   const extSchemes = schemes.filter((s) => s.productType === "extension");
@@ -217,10 +228,29 @@ export function pickBestScheme(schemes: XcodeScheme[]): XcodeScheme | undefined 
     const lower = s.name.toLowerCase();
     return !lower.includes("test") && !lower.includes("framework");
   });
-  if (nonTestNonFramework.length > 0) return nonTestNonFramework[0];
+  if (nonTestNonFramework.length > 0) {
+    // Among these, prefer matching project name
+    if (projectName) {
+      const matching = nonTestNonFramework.find((s) => s.name === projectName);
+      if (matching) return matching;
+    }
+    return nonTestNonFramework[0];
+  }
 
   // 4. Last resort
   return schemes[0];
+}
+
+/**
+ * Extract the base name from a project/workspace path.
+ * e.g. "path/to/Letyco.xcworkspace" → "Letyco"
+ *      "path/to/MyApp.xcodeproj" → "MyApp"
+ *      "path/to/Package.swift" → "Package"
+ */
+export function projectBaseName(projectPath: string): string {
+  const base = nodePath.basename(projectPath);
+  // Strip .xcworkspace, .xcodeproj, .swift
+  return base.replace(/\.(xcworkspace|xcodeproj|swift)$/, "");
 }
 
 /**
