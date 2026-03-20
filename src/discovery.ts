@@ -126,8 +126,8 @@ export async function discoverDestinations(
   }
 
   const result = await exec("xcodebuild", args, { timeout: 30_000, cwd: execCwd });
-  if (result.code !== 0) return [];
 
+  // Parse regardless of exit code — xcodebuild may print destinations even on non-zero exit
   const combined = result.stdout + "\n" + result.stderr;
   return parseDestinations(combined);
 }
