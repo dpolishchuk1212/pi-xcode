@@ -9,7 +9,7 @@ import {
   buildSimulatorDestination,
   buildXctraceArgs,
 } from "../commands.js";
-import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
+import { parseAppPath, parseBuildResult } from "../parsers.js";
 import { discover, autoSelect, discoverSimulators, findSimulator } from "../discovery.js";
 import { formatBuildResult } from "../format.js";
 

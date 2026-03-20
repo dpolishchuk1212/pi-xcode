@@ -31,10 +31,13 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
+      const theme = ctx.ui.theme;
       const formatOption = (s: typeof iosDevices[number]) => {
-        const booted = s.state === "Booted" ? " ▶" : "";
-        const active = state.activeSimulator?.udid === s.udid ? " ★" : "";
-        return `${s.name} (${s.runtime}) [${s.udid}]${booted}${active}`;
+        let label = `${s.name} (${s.runtime})`;
+        if (s.state === "Booted") label += theme.fg("success", " ▶ booted");
+        if (state.activeSimulator?.udid === s.udid) label += theme.fg("accent", " ★ active");
+        label += " " + theme.fg("dim", s.udid);
+        return label;
       };
 
       const options = iosDevices.map(formatOption);
