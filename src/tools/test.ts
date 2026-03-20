@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
 import { startOperation, clearOperation } from "../state.js";
+import { createTestExec } from "../streaming.js";
 import { buildTestArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
 import { parseTestResult } from "../parsers.js";
 import { resolveProjectAndScheme, getXcodebuildProjectArgs, updateStatusBar, startSpinner, stopSpinner } from "../resolve.js";
@@ -76,7 +77,8 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
 
       let testResult;
       try {
-        const result = await exec("xcodebuild", args, { signal: combinedSignal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
+        const testExecFn = createTestExec(state, exec);
+        const result = await testExecFn("xcodebuild", args, { signal: combinedSignal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
         const combined = result.stdout + "\n" + result.stderr;
         testResult = parseTestResult(combined);
       } finally {

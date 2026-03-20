@@ -131,3 +131,127 @@ export function createBuildExec(state: XcodeState, execFn?: ExecFn) {
     });
   };
 }
+
+// ── Test progress counting ─────────────────────────────────────────────────
+
+/**
+ * Regex matching xcodebuild test result lines:
+ *   Test case 'SomeTests/testFoo()' passed on '...' (0.001 seconds)
+ *   Test case 'SomeTests/testBar()' failed on '...' (0.002 seconds)
+ */
+const TEST_PASSED_RE = /^Test case '.+' passed/;
+const TEST_FAILED_RE = /^Test case '.+' failed/;
+
+/**
+ * Count passed/failed tests from xcodebuild output.
+ */
+export function countTests(output: string): { passed: number; failed: number } {
+  let passed = 0;
+  let failed = 0;
+  for (const line of output.split("\n")) {
+    if (TEST_PASSED_RE.test(line)) passed++;
+    else if (TEST_FAILED_RE.test(line)) failed++;
+  }
+  return { passed, failed };
+}
+
+/**
+ * Create an exec function with test progress counting.
+ *
+ * - Without execFn: uses child_process.spawn for real-time test counts
+ * - With execFn: delegates to it and counts from the final output (for testability)
+ */
+export function createTestExec(state: XcodeState, execFn?: ExecFn) {
+  return (
+    command: string,
+    args: string[],
+    options?: { signal?: AbortSignal; timeout?: number; cwd?: string },
+  ): Promise<ExecResult> => {
+    state.passedTests = 0;
+    state.failedTests = 0;
+
+    // If we have an injected exec (e.g. in tests), use it with post-hoc counting
+    if (execFn) {
+      return execFn(command, args, options).then((result) => {
+        const combined = result.stdout + "\n" + result.stderr;
+        const counts = countTests(combined);
+        state.passedTests = counts.passed;
+        state.failedTests = counts.failed;
+        return result;
+      });
+    }
+
+    // Real mode: spawn directly for real-time counting
+    return new Promise<ExecResult>((resolve) => {
+      const proc = spawn(command, args, {
+        cwd: options?.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: process.env,
+      });
+
+      let stdout = "";
+      let stderr = "";
+      let killed = false;
+      let settled = false;
+
+      const settle = (result: ExecResult) => {
+        if (settled) return;
+        settled = true;
+        resolve(result);
+      };
+
+      const processLine = (line: string) => {
+        if (TEST_PASSED_RE.test(line)) state.passedTests++;
+        else if (TEST_FAILED_RE.test(line)) state.failedTests++;
+      };
+
+      let stdoutBuffer = "";
+      proc.stdout.on("data", (chunk: Buffer) => {
+        const text = chunk.toString();
+        stdout += text;
+
+        stdoutBuffer += text;
+        const lines = stdoutBuffer.split("\n");
+        stdoutBuffer = lines.pop() ?? "";
+        for (const line of lines) processLine(line);
+      });
+
+      proc.stderr.on("data", (chunk: Buffer) => {
+        const text = chunk.toString();
+        stderr += text;
+        for (const line of text.split("\n")) processLine(line);
+      });
+
+      proc.on("close", (code) => {
+        if (stdoutBuffer) processLine(stdoutBuffer);
+        settle({ stdout, stderr, code: code ?? 1, killed });
+      });
+
+      proc.on("error", () => {
+        settle({ stdout, stderr, code: 1, killed: false });
+      });
+
+      if (options?.signal) {
+        if (options.signal.aborted) {
+          proc.kill("SIGTERM");
+          killed = true;
+          settle({ stdout, stderr, code: 1, killed: true });
+          return;
+        }
+        options.signal.addEventListener("abort", () => {
+          killed = true;
+          proc.kill("SIGTERM");
+        }, { once: true });
+      }
+
+      if (options?.timeout) {
+        setTimeout(() => {
+          if (!settled) {
+            killed = true;
+            proc.kill("SIGTERM");
+          }
+        }, options.timeout);
+      }
+    });
+  };
+}

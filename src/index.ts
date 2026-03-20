@@ -25,7 +25,7 @@ import { registerRunTool } from "./tools/run.js";
 import { registerTestTool } from "./tools/test.js";
 import { registerProfileTool } from "./tools/profile.js";
 import { registerStopTool, stopActiveOperation } from "./tools/stop.js";
-import { createBuildExec } from "./streaming.js";
+import { createBuildExec, createTestExec } from "./streaming.js";
 
 function createExec(pi: ExtensionAPI): ExecFn {
   return (command, args, options) => pi.exec(command, args, options);
@@ -441,7 +441,8 @@ export default function (pi: ExtensionAPI) {
 
       const signal = startOperation(state, `Test ${state.activeScheme.name}${filterLabel}${planLabel}`);
       try {
-        const result = await exec("xcodebuild", testArgs, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
+        const testExec = createTestExec(state);
+        const result = await testExec("xcodebuild", testArgs, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
         const combined = result.stdout + "\n" + result.stderr;
         const testResult = parseTestResult(combined);
 

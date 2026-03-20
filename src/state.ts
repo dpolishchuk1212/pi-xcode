@@ -25,6 +25,10 @@ export interface XcodeState {
   operationStartTime: number | undefined;
   /** Number of completed build tasks (for progress display). */
   completedTasks: number;
+  /** Number of passed tests (for progress display). */
+  passedTests: number;
+  /** Number of failed tests (for progress display). */
+  failedTests: number;
 }
 
 export function createState(): XcodeState {
@@ -43,6 +47,8 @@ export function createState(): XcodeState {
     stopSpinner: undefined,
     operationStartTime: undefined,
     completedTasks: 0,
+    passedTests: 0,
+    failedTests: 0,
   };
 }
 
