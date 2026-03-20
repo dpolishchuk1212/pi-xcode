@@ -133,7 +133,15 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const formatOption = (d: (typeof destinations)[number]) => {
+      // Sort: physical devices first, then Mac, then simulators
+      const sortOrder = (d: (typeof destinations)[number]) => {
+        if (!d.platform.includes("Simulator") && d.platform !== "macOS") return 0; // physical device
+        if (d.platform === "macOS") return 1;
+        return 2; // simulator
+      };
+      const sorted = [...destinations].sort((a, b) => sortOrder(a) - sortOrder(b));
+
+      const formatOption = (d: (typeof sorted)[number]) => {
         let label = formatDestinationLabel(d);
         if (state.activeDestination?.id === d.id) {
           label += theme.fg("accent", " ★ active");
@@ -142,12 +150,12 @@ export default function (pi: ExtensionAPI) {
         return label;
       };
 
-      const options = destinations.map(formatOption);
+      const options = sorted.map(formatOption);
       const choice = await ctx.ui.select("Select run destination:", options);
       if (choice === undefined) return;
 
       const selectedIndex = options.indexOf(choice);
-      const selected = selectedIndex >= 0 ? destinations[selectedIndex] : undefined;
+      const selected = selectedIndex >= 0 ? sorted[selectedIndex] : undefined;
       if (!selected) return;
 
       state.activeDestination = selected;
