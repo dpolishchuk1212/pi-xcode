@@ -13,6 +13,8 @@ export interface XcodeState {
   activeConfiguration: string | undefined;
   availableConfigurations: string[];
   appStatus: "idle" | "building" | "running";
+  /** Cleanup function to stop the current app lifecycle monitor. */
+  stopAppMonitor: (() => void) | undefined;
 }
 
 export function createState(): XcodeState {
@@ -25,5 +27,6 @@ export function createState(): XcodeState {
     activeConfiguration: undefined,
     availableConfigurations: [],
     appStatus: "idle",
+    stopAppMonitor: undefined,
   };
 }

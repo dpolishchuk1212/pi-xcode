@@ -6,6 +6,9 @@ import {
   ensureDestinationReady,
   installApp,
   launchApp,
+  monitorAppLifecycle,
+  isProcessAlive,
+  parsePidFromOutput,
   destinationTypeLabel,
 } from "../src/runner.js";
 
@@ -201,10 +204,11 @@ describe("installApp", () => {
 // ── launchApp ──────────────────────────────────────────────────────────────
 
 describe("launchApp", () => {
-  it("uses simctl launch for simulators", async () => {
-    const exec = mockExec();
+  it("uses simctl launch for simulators and parses PID", async () => {
+    const exec = mockExec({ launch: { stdout: "com.test.App: 12345\n" } });
     const result = await launchApp(exec, simDest, "com.test.App", "/path/to/App.app");
     expect(result.success).toBe(true);
+    expect(result.pid).toBe(12345);
     expect(exec).toHaveBeenCalledWith(
       "xcrun",
       ["simctl", "launch", "SIM-UUID", "com.test.App"],
@@ -223,11 +227,11 @@ describe("launchApp", () => {
     );
   });
 
-  it("uses open for macOS", async () => {
-    const exec = mockExec();
+  it("uses open for macOS and finds PID via pgrep", async () => {
+    const exec = mockExec({ pgrep: { stdout: "67890\n" } });
     const result = await launchApp(exec, macDest, "com.test.App", "/path/to/App.app");
     expect(result.success).toBe(true);
-    expect(exec).toHaveBeenCalledWith("open", ["/path/to/App.app"], expect.any(Object));
+    expect(result.pid).toBe(67890);
   });
 
   it("returns error on launch failure", async () => {
@@ -235,5 +239,105 @@ describe("launchApp", () => {
     const result = await launchApp(exec, simDest, "com.test.App", "/path/to/App.app");
     expect(result.success).toBe(false);
     expect(result.error).toBe("launch failed");
+  });
+
+  it("returns undefined PID when simctl output has no PID", async () => {
+    const exec = mockExec({ launch: { stdout: "" } });
+    const result = await launchApp(exec, simDest, "com.test.App", "/path/to/App.app");
+    expect(result.success).toBe(true);
+    expect(result.pid).toBeUndefined();
+  });
+});
+
+// ── parsePidFromOutput ─────────────────────────────────────────────────────
+
+describe("parsePidFromOutput", () => {
+  it("parses simctl launch format", () => {
+    expect(parsePidFromOutput("com.example.App: 12345\n")).toBe(12345);
+  });
+
+  it("parses PID with extra whitespace", () => {
+    expect(parsePidFromOutput("com.example.App:  99999 \n")).toBe(99999);
+  });
+
+  it("parses devicectl-style pid output", () => {
+    expect(parsePidFromOutput('pid: 54321')).toBe(54321);
+  });
+
+  it("returns undefined for no PID", () => {
+    expect(parsePidFromOutput("no pid here")).toBeUndefined();
+    expect(parsePidFromOutput("")).toBeUndefined();
+  });
+});
+
+// ── isProcessAlive ─────────────────────────────────────────────────────────
+
+describe("isProcessAlive", () => {
+  it("returns true when ps succeeds", async () => {
+    const exec = mockExec({ ps: { code: 0 } });
+    expect(await isProcessAlive(exec, 12345)).toBe(true);
+    expect(exec).toHaveBeenCalledWith("ps", ["-p", "12345"], expect.any(Object));
+  });
+
+  it("returns false when ps fails", async () => {
+    const exec = mockExec({ ps: { code: 1 } });
+    expect(await isProcessAlive(exec, 12345)).toBe(false);
+  });
+
+  it("returns false on exec error", async () => {
+    const exec = vi.fn(async () => { throw new Error("exec failed"); }) as unknown as ExecFn;
+    expect(await isProcessAlive(exec, 12345)).toBe(false);
+  });
+});
+
+// ── monitorAppLifecycle ────────────────────────────────────────────────────
+
+describe("monitorAppLifecycle", () => {
+  it("calls onExit when process dies", async () => {
+    let callCount = 0;
+    const exec = vi.fn(async () => {
+      callCount++;
+      // Process alive on first check, dead on second
+      return { stdout: "", stderr: "", code: callCount <= 1 ? 0 : 1, killed: false };
+    }) as unknown as ExecFn;
+
+    const onExit = vi.fn();
+    const stop = monitorAppLifecycle(exec, 12345, onExit, 50); // 50ms interval for fast test
+
+    // Wait for a few cycles
+    await new Promise((r) => setTimeout(r, 200));
+    stop();
+
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops polling when cleanup is called", async () => {
+    const exec = mockExec({ ps: { code: 0 } }); // always alive
+    const onExit = vi.fn();
+
+    const stop = monitorAppLifecycle(exec, 12345, onExit, 50);
+
+    // Let it poll a couple times
+    await new Promise((r) => setTimeout(r, 130));
+    stop();
+
+    // Wait to ensure no more polls happen
+    const callCountAtStop = (exec as ReturnType<typeof vi.fn>).mock.calls.length;
+    await new Promise((r) => setTimeout(r, 100));
+    expect((exec as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callCountAtStop);
+
+    expect(onExit).not.toHaveBeenCalled();
+  });
+
+  it("does not call onExit multiple times", async () => {
+    const exec = mockExec({ ps: { code: 1 } }); // always dead
+    const onExit = vi.fn();
+
+    const stop = monitorAppLifecycle(exec, 12345, onExit, 50);
+
+    await new Promise((r) => setTimeout(r, 250));
+    stop();
+
+    expect(onExit).toHaveBeenCalledTimes(1);
   });
 });

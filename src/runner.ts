@@ -118,13 +118,15 @@ export async function installApp(
 export interface LaunchResult {
   success: boolean;
   error?: string;
+  /** PID of the launched process (when available). Used for lifecycle monitoring. */
+  pid?: number;
 }
 
 /**
- * Launch an app on the destination.
- * - Simulator: `simctl launch`
- * - Device: `devicectl device process launch`
- * - Mac: `open <app-path>`
+ * Launch an app on the destination. Returns the PID when possible.
+ * - Simulator: `simctl launch` — PID parsed from stdout ("bundleId: PID")
+ * - Device: `devicectl device process launch` — PID parsed if available
+ * - Mac: `open <app-path>` — PID found via `pgrep`
  */
 export async function launchApp(
   exec: ExecFn,
@@ -139,7 +141,12 @@ export async function launchApp(
     switch (type) {
       case "simulator": {
         const result = await exec("xcrun", ["simctl", "launch", dest.id, bundleId], { signal, timeout: 30_000 });
-        return { success: result.code === 0, error: result.code !== 0 ? result.stderr : undefined };
+        if (result.code !== 0) {
+          return { success: false, error: result.stderr };
+        }
+        // simctl launch prints "com.example.App: 12345"
+        const pid = parsePidFromOutput(result.stdout);
+        return { success: true, pid };
       }
 
       case "device": {
@@ -148,16 +155,116 @@ export async function launchApp(
           ["devicectl", "device", "process", "launch", "--device", dest.id, bundleId],
           { signal, timeout: 30_000 },
         );
-        return { success: result.code === 0, error: result.code !== 0 ? result.stderr : undefined };
+        if (result.code !== 0) {
+          return { success: false, error: result.stderr };
+        }
+        // devicectl may print PID in output — best effort parse
+        const pid = parsePidFromOutput(result.stdout + "\n" + result.stderr);
+        return { success: true, pid };
       }
 
       case "mac": {
         const result = await exec("open", [appPath], { signal, timeout: 10_000 });
-        return { success: result.code === 0, error: result.code !== 0 ? result.stderr : undefined };
+        if (result.code !== 0) {
+          return { success: false, error: result.stderr };
+        }
+        // Find PID via pgrep using the app's executable name
+        const appName = nodePath.basename(appPath, ".app");
+        const pid = await findProcessPid(exec, appName);
+        return { success: true, pid };
       }
     }
   } catch (e) {
     return { success: false, error: String(e) };
+  }
+}
+
+// ── Process monitoring ─────────────────────────────────────────────────────
+
+/**
+ * Monitor a launched app process. Polls `ps -p <pid>` at a regular interval.
+ * Calls `onExit` when the process is no longer running.
+ * Returns a cleanup function to stop monitoring.
+ */
+export function monitorAppLifecycle(
+  exec: ExecFn,
+  pid: number,
+  onExit: () => void,
+  intervalMs = 3000,
+): () => void {
+  let stopped = false;
+
+  const check = async () => {
+    if (stopped) return;
+    const alive = await isProcessAlive(exec, pid);
+    if (!alive && !stopped) {
+      stopped = true;
+      clearInterval(timer);
+      onExit();
+    }
+  };
+
+  const timer = setInterval(check, intervalMs);
+
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
+/**
+ * Check if a process is still running using `ps -p <pid>`.
+ * Works for both simulator (processes run on host) and macOS apps.
+ */
+export async function isProcessAlive(exec: ExecFn, pid: number): Promise<boolean> {
+  try {
+    const result = await exec("ps", ["-p", String(pid)], { timeout: 5_000 });
+    return result.code === 0;
+  } catch {
+    return false;
+  }
+}
+
+// ── PID parsing helpers ────────────────────────────────────────────────────
+
+/**
+ * Parse a PID from command output. Looks for patterns like:
+ * - "com.example.App: 12345" (simctl launch)
+ * - "pid: 12345" or "PID: 12345" (devicectl)
+ * - Any trailing number after a colon or equals
+ */
+export function parsePidFromOutput(output: string): number | undefined {
+  // simctl format: "com.example.App: 12345"
+  const colonMatch = output.match(/:\s*(\d+)\s*$/m);
+  if (colonMatch) {
+    const pid = parseInt(colonMatch[1], 10);
+    if (!isNaN(pid) && pid > 0) return pid;
+  }
+
+  // devicectl or other format: "pid" = 12345 or "PID: 12345"
+  const pidMatch = output.match(/pid["\s:=]+(\d+)/i);
+  if (pidMatch) {
+    const pid = parseInt(pidMatch[1], 10);
+    if (!isNaN(pid) && pid > 0) return pid;
+  }
+
+  return undefined;
+}
+
+/**
+ * Find a process PID by executable name using `pgrep -x`.
+ * Returns the most recent PID (highest number) if multiple matches.
+ */
+async function findProcessPid(exec: ExecFn, processName: string): Promise<number | undefined> {
+  try {
+    // Short delay to let the process start
+    await new Promise((r) => setTimeout(r, 300));
+    const result = await exec("pgrep", ["-xn", processName], { timeout: 5_000 });
+    if (result.code !== 0) return undefined;
+    const pid = parseInt(result.stdout.trim(), 10);
+    return !isNaN(pid) && pid > 0 ? pid : undefined;
+  } catch {
+    return undefined;
   }
 }
 

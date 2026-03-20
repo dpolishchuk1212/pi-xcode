@@ -15,7 +15,7 @@ import {
 import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs } from "./commands.js";
 import { parseAppPath, parseBuildResult, parseBundleId } from "./parsers.js";
 import { formatBuildResult } from "./format.js";
-import { terminateApp, ensureDestinationReady, installApp, launchApp, destinationTypeLabel } from "./runner.js";
+import { terminateApp, ensureDestinationReady, installApp, launchApp, monitorAppLifecycle, destinationTypeLabel } from "./runner.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
 import { registerDiscoverTool } from "./tools/discover.js";
@@ -327,7 +327,10 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      // ── Terminate → Boot → Install → Launch ───────────────────────
+      // ── Stop previous monitor → Terminate → Boot → Install → Launch ─
+      state.stopAppMonitor?.();
+      state.stopAppMonitor = undefined;
+
       await terminateApp(exec, dest, bundleId, appPath);
       await ensureDestinationReady(exec, dest);
 
@@ -340,6 +343,16 @@ export default function (pi: ExtensionAPI) {
       if (launchResult.success) {
         state.appStatus = "running";
         updateStatusBar(ctx.cwd, state, ctx.ui);
+
+        // Start monitoring — auto-update status when app exits
+        if (launchResult.pid) {
+          state.stopAppMonitor = monitorAppLifecycle(exec, launchResult.pid, () => {
+            state.appStatus = "idle";
+            state.stopAppMonitor = undefined;
+            updateStatusBar(ctx.cwd, state, ctx.ui);
+          });
+        }
+
         ctx.ui.notify(`✅ ${scheme} launched on ${destLabel} [${destType}]`, "info");
       } else {
         state.appStatus = "idle";

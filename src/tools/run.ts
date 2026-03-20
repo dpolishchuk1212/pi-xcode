@@ -12,7 +12,7 @@ import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
 import { discoverSimulators, findSimulator } from "../discovery.js";
 import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel, updateStatusBar } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
-import { classifyDestination, terminateApp, ensureDestinationReady, installApp, launchApp, destinationTypeLabel } from "../runner.js";
+import { classifyDestination, terminateApp, ensureDestinationReady, installApp, launchApp, monitorAppLifecycle, destinationTypeLabel } from "../runner.js";
 
 export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
@@ -136,7 +136,10 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
         );
       }
 
-      // ── Terminate existing instance ──────────────────────────────────
+      // ── Stop previous monitor & terminate existing instance ──────────
+      state.stopAppMonitor?.();
+      state.stopAppMonitor = undefined;
+
       onUpdate?.({ content: [{ type: "text", text: `Terminating previous instance...` }], details: undefined });
       await terminateApp(exec, dest, bundleId, appPath);
 
@@ -154,6 +157,15 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
 
       if (launchResult.success) {
         state.appStatus = "running";
+
+        // Start monitoring the app process — update status when it exits
+        if (launchResult.pid) {
+          state.stopAppMonitor = monitorAppLifecycle(exec, launchResult.pid, () => {
+            state.appStatus = "idle";
+            state.stopAppMonitor = undefined;
+            updateStatusBar(cwd, state, ctx.ui);
+          });
+        }
       } else {
         state.appStatus = "idle";
       }
