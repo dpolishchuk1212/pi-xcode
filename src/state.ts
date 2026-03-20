@@ -1,23 +1,23 @@
-import type { Destination, Simulator, XcodeProject, XcodeScheme } from "./types.js";
+import type { Destination, XcodeProject, XcodeScheme } from "./types.js";
 
 /**
  * Shared mutable state for the extension session.
  * Tools and commands read/write this to coordinate.
  */
 export interface XcodeState {
-  activeSimulator: Simulator | undefined;
   activeProject: XcodeProject | undefined;
   activeScheme: XcodeScheme | undefined;
-  availableDestinations: Destination[];
+  availableSchemes: XcodeScheme[];
   activeDestination: Destination | undefined;
+  availableDestinations: Destination[];
 }
 
 export function createState(): XcodeState {
   return {
-    activeSimulator: undefined,
     activeProject: undefined,
     activeScheme: undefined,
-    availableDestinations: [],
+    availableSchemes: [],
     activeDestination: undefined,
+    availableDestinations: [],
   };
 }

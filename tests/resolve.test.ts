@@ -4,7 +4,7 @@ import { createState } from "../src/state.js";
 import {
   resolveProjectAndScheme,
   getXcodebuildProjectArgs,
-  updateProjectStatus,
+  updateStatusBar,
   autoDetect,
   pickBestDestination,
   formatDestinationLabel,
@@ -193,41 +193,53 @@ describe("getXcodebuildProjectArgs", () => {
   });
 });
 
-// ── updateProjectStatus ────────────────────────────────────────────────────
+// ── updateStatusBar ────────────────────────────────────────────────────
 
-describe("updateProjectStatus", () => {
-  it("clears status when no active project", () => {
+describe("updateStatusBar", () => {
+  it("clears status when nothing is set", () => {
     const ui = createMockUI();
-    updateProjectStatus("/project", createState(), ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode-project", undefined);
+    updateStatusBar("/project", createState(), ui);
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", undefined);
   });
 
-  it("shows relative path for project", () => {
+  it("shows project | scheme | destination", () => {
     const state = createState();
     state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
     state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
+    state.activeDestination = { platform: "iOS Simulator", id: "UUID", name: "iPhone 17", os: "18.0", arch: "arm64" };
 
     const ui = createMockUI();
-    updateProjectStatus("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode-project", "📁 App.xcodeproj");
+    updateStatusBar("/project", state, ui);
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📁 App.xcodeproj | 🔨 App | 📱 iPhone 17 (18.0)");
+  });
+
+  it("shows project only when no scheme or destination", () => {
+    const state = createState();
+    state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
+
+    const ui = createMockUI();
+    updateStatusBar("/project", state, ui);
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📁 App.xcodeproj");
   });
 
   it("shows 📦 for package type", () => {
     const state = createState();
     state.activeProject = { path: "/project/Package.swift", type: "package" };
+    state.activeScheme = { name: "MyLib", project: "/project/Package.swift" };
 
     const ui = createMockUI();
-    updateProjectStatus("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode-project", "📦 Package.swift");
+    updateStatusBar("/project", state, ui);
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📦 Package.swift | 🔨 MyLib");
   });
 
   it("shows 🗂️ for workspace type", () => {
     const state = createState();
     state.activeProject = { path: "/project/App.xcworkspace", type: "workspace" };
+    state.activeScheme = { name: "App", project: "/project/App.xcworkspace" };
 
     const ui = createMockUI();
-    updateProjectStatus("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode-project", "🗂️ App.xcworkspace");
+    updateStatusBar("/project", state, ui);
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "🗂️ App.xcworkspace | 🔨 App");
   });
 
   it("shows nested relative path", () => {
@@ -235,8 +247,8 @@ describe("updateProjectStatus", () => {
     state.activeProject = { path: "/project/sub/App.xcodeproj", type: "project" };
 
     const ui = createMockUI();
-    updateProjectStatus("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode-project", "📁 sub/App.xcodeproj");
+    updateStatusBar("/project", state, ui);
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📁 sub/App.xcodeproj");
   });
 });
 
@@ -270,9 +282,8 @@ describe("autoDetect", () => {
     expect(state.activeDestination?.name).toBe("iPhone 16");
     expect(state.availableDestinations).toHaveLength(2);
 
-    // Status bar updated for both
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode-project", "📁 App.xcodeproj");
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📱 iPhone 16 (iOS 18.0)");
+    // Unified status bar updated
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📁 App.xcodeproj | 🔨 App | 📱 iPhone 16 (18.0)");
 
     // No select prompts shown
     expect(ui.select).not.toHaveBeenCalled();

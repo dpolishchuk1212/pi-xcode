@@ -1,5 +1,5 @@
 /**
- * Shared project/scheme resolution logic used by all tools and the /project command.
+ * Shared project/scheme/destination resolution logic used by all tools and commands.
  */
 
 import nodePath from "node:path";
@@ -65,7 +65,7 @@ export async function resolveProjectAndScheme(
 
 /**
  * Discover projects recursively (depth 6) and select one interactively.
- * Saves selection to state and updates the status bar.
+ * Also auto-selects scheme and destinations. Updates state and status bar.
  */
 export async function discoverAndSelect(
   exec: ExecFn,
@@ -93,95 +93,53 @@ export async function discoverAndSelect(
     selectedProject = projects[idx];
   }
 
-  // Discover schemes for the selected project
-  const selectedScheme = await selectScheme(exec, selectedProject.path, ui);
-
-  // Save to state
+  // Save project to state
   state.activeProject = selectedProject;
-  state.activeScheme = selectedScheme;
+
+  // Auto-select scheme and destinations
+  await refreshSchemes(exec, state, ui);
 
   // Update status bar
-  updateProjectStatus(cwd, state, ui);
+  updateStatusBar(cwd, state, ui);
 
-  return { project: selectedProject, scheme: selectedScheme?.name };
+  return { project: selectedProject, scheme: state.activeScheme?.name };
 }
 
+// ── Scheme helpers ─────────────────────────────────────────────────────────
+
 /**
- * Discover schemes and select one. Auto-selects if there's only one non-test scheme.
+ * Discover schemes for the active project, auto-select the best one,
+ * then refresh destinations. Updates state.
  */
-async function selectScheme(
+export async function refreshSchemes(
   exec: ExecFn,
-  projectPath: string,
-  ui: ResolveUI,
-): Promise<XcodeScheme | undefined> {
-  const schemes = await discoverSchemes(exec, projectPath);
-
-  if (schemes.length === 0) return undefined;
-  if (schemes.length === 1) return schemes[0];
-
-  // Try to auto-select the main (non-test) scheme
-  const nonTest = schemes.filter((s) => !s.name.toLowerCase().includes("test"));
-  if (nonTest.length === 1) return nonTest[0];
-
-  // Multiple candidates — ask the user
-  const options = schemes.map((s) => s.name);
-  const choice = await ui.select("Select a scheme:", options);
-  if (choice === undefined) {
-    throw new Error("Cancelled — no scheme selected.");
-  }
-  return schemes.find((s) => s.name === choice);
-}
-
-// ── xcodebuild arg helpers ────────────────────────────────────────────────
-
-/**
- * Get the xcodebuild project/workspace flags and optional cwd for a resolved project.
- * For Package.swift, returns no project/workspace flags and sets execCwd to the package dir.
- */
-export function getXcodebuildProjectArgs(project: XcodeProject): {
-  projectFlag: string | undefined;
-  workspaceFlag: string | undefined;
-  execCwd: string | undefined;
-} {
-  switch (project.type) {
-    case "workspace":
-      return { projectFlag: undefined, workspaceFlag: project.path, execCwd: undefined };
-    case "project":
-      return { projectFlag: project.path, workspaceFlag: undefined, execCwd: undefined };
-    case "package":
-      // Package.swift — run xcodebuild from the package directory, no -project/-workspace
-      return { projectFlag: undefined, workspaceFlag: undefined, execCwd: nodePath.dirname(project.path) };
-  }
-}
-
-// ── Status bar ─────────────────────────────────────────────────────────────
-
-/**
- * Update the status bar with the active project info.
- */
-export function updateProjectStatus(cwd: string, state: XcodeState, ui: ResolveUI): void {
+  state: XcodeState,
+  ui: Pick<ResolveUI, "setStatus">,
+): Promise<void> {
   if (!state.activeProject) {
-    ui.setStatus("xcode-project", undefined);
+    state.availableSchemes = [];
+    state.activeScheme = undefined;
+    state.availableDestinations = [];
+    state.activeDestination = undefined;
     return;
   }
 
-  const label = path.relative(cwd, state.activeProject.path) || state.activeProject.path;
+  const schemes = await discoverSchemes(exec, state.activeProject.path);
+  state.availableSchemes = schemes;
 
-  const icon =
-    state.activeProject.type === "workspace"
-      ? "🗂️"
-      : state.activeProject.type === "package"
-        ? "📦"
-        : "📁";
+  // Auto-select: prefer non-test scheme, then first
+  const best = schemes.find((s) => !s.name.toLowerCase().includes("test")) ?? schemes[0];
+  state.activeScheme = best;
 
-  ui.setStatus("xcode-project", `${icon} ${label}`);
+  // Refresh destinations for the new scheme
+  await refreshDestinations(exec, state, ui);
 }
 
 // ── Destination helpers ────────────────────────────────────────────────────
 
 /**
  * Discover destinations for the active project/scheme and store them.
- * Auto-selects the best destination (prefer booted iPhone sim, then latest iPhone sim).
+ * Auto-selects the best destination (prefer iPhone sim with latest OS).
  */
 export async function refreshDestinations(
   exec: ExecFn,
@@ -191,17 +149,15 @@ export async function refreshDestinations(
   if (!state.activeProject || !state.activeScheme) {
     state.availableDestinations = [];
     state.activeDestination = undefined;
-    ui.setStatus("xcode", undefined);
     return;
   }
 
   const destinations = await discoverDestinations(exec, state.activeProject, state.activeScheme.name);
   state.availableDestinations = destinations;
 
-  // Auto-select best destination: prefer iPhone simulator, then iPad, then any simulator, then first
+  // Auto-select best destination
   const best = pickBestDestination(destinations);
   state.activeDestination = best;
-  updateDestinationStatus(state, ui);
 }
 
 /**
@@ -235,23 +191,6 @@ export function pickBestDestination(destinations: Destination[]): Destination | 
 }
 
 /**
- * Update the status bar with the active destination.
- */
-export function updateDestinationStatus(
-  state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus">,
-): void {
-  if (!state.activeDestination) {
-    ui.setStatus("xcode", undefined);
-    return;
-  }
-
-  const d = state.activeDestination;
-  const osLabel = d.os ? ` (${d.platform.replace(" Simulator", "")} ${d.os})` : "";
-  ui.setStatus("xcode", `📱 ${d.name}${osLabel}`);
-}
-
-/**
  * Format a destination for display in a picker list.
  */
 export function formatDestinationLabel(d: Destination): string {
@@ -259,6 +198,46 @@ export function formatDestinationLabel(d: Destination): string {
   if (d.os) parts.push(`(${d.os})`);
   if (d.variant) parts.push(`— ${d.variant}`);
   return parts.join(" ");
+}
+
+// ── Status bar ─────────────────────────────────────────────────────────────
+
+/**
+ * Update the unified status bar: `project | scheme | destination`
+ */
+export function updateStatusBar(
+  cwd: string,
+  state: XcodeState,
+  ui: Pick<ResolveUI, "setStatus">,
+): void {
+  const parts: string[] = [];
+
+  if (state.activeProject) {
+    const label = path.relative(cwd, state.activeProject.path) || state.activeProject.path;
+    const icon =
+      state.activeProject.type === "workspace"
+        ? "🗂️"
+        : state.activeProject.type === "package"
+          ? "📦"
+          : "📁";
+    parts.push(`${icon} ${label}`);
+  }
+
+  if (state.activeScheme) {
+    parts.push(`🔨 ${state.activeScheme.name}`);
+  }
+
+  if (state.activeDestination) {
+    const d = state.activeDestination;
+    const osLabel = d.os ? ` (${d.os})` : "";
+    parts.push(`📱 ${d.name}${osLabel}`);
+  }
+
+  if (parts.length === 0) {
+    ui.setStatus("xcode", undefined);
+  } else {
+    ui.setStatus("xcode", parts.join(" | "));
+  }
 }
 
 // ── Silent auto-detect (session start) ─────────────────────────────────────
@@ -273,24 +252,40 @@ export async function autoDetect(
   state: XcodeState,
   ui: Pick<ResolveUI, "setStatus">,
 ): Promise<void> {
-  // ── Project & scheme ─────────────────────────────────────────────────
+  // ── Project ──────────────────────────────────────────────────────────
   const projects = await discoverProjects(exec, cwd, 6);
 
   if (projects.length > 0) {
     // Already sorted: workspace > project > package — pick first
-    const selectedProject = projects[0];
+    state.activeProject = projects[0];
 
-    const schemes = await discoverSchemes(exec, selectedProject.path);
-    const selectedScheme =
-      schemes.find((s) => !s.name.toLowerCase().includes("test")) ?? schemes[0];
-
-    state.activeProject = selectedProject;
-    state.activeScheme = selectedScheme;
-    updateProjectStatus(cwd, state, ui as ResolveUI);
+    // ── Scheme → Destination (cascading) ─────────────────────────────
+    await refreshSchemes(exec, state, ui);
   }
 
-  // ── Destinations for selected project/scheme ─────────────────────────
-  await refreshDestinations(exec, state, ui);
+  // ── Update unified status bar ────────────────────────────────────────
+  updateStatusBar(cwd, state, ui);
+}
+
+// ── xcodebuild arg helpers ────────────────────────────────────────────────
+
+/**
+ * Get the xcodebuild project/workspace flags and optional cwd for a resolved project.
+ * For Package.swift, returns no project/workspace flags and sets execCwd to the package dir.
+ */
+export function getXcodebuildProjectArgs(project: XcodeProject): {
+  projectFlag: string | undefined;
+  workspaceFlag: string | undefined;
+  execCwd: string | undefined;
+} {
+  switch (project.type) {
+    case "workspace":
+      return { projectFlag: undefined, workspaceFlag: project.path, execCwd: undefined };
+    case "project":
+      return { projectFlag: project.path, workspaceFlag: undefined, execCwd: undefined };
+    case "package":
+      return { projectFlag: undefined, workspaceFlag: undefined, execCwd: nodePath.dirname(project.path) };
+  }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
