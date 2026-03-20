@@ -6,11 +6,15 @@ import { discoverProjects } from "./discovery.js";
 import {
   autoDetect,
   formatDestinationLabel,
+  getXcodebuildProjectArgs,
   refreshConfigurations,
   refreshDestinations,
   refreshSchemes,
   updateStatusBar,
 } from "./resolve.js";
+import { buildBuildArgs, buildDestinationString } from "./commands.js";
+import { parseBuildResult } from "./parsers.js";
+import { formatBuildResult } from "./format.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
 import { registerDiscoverTool } from "./tools/discover.js";
@@ -201,6 +205,44 @@ export default function (pi: ExtensionAPI) {
       state.activeConfiguration = selected;
       updateStatusBar(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Build configuration: ${selected}`, "info");
+    },
+  });
+
+  // ── /build command ────────────────────────────────────────────────────
+  pi.registerCommand("build", {
+    description: "Build the active project with current scheme, configuration, and destination",
+    handler: async (_args, ctx) => {
+      if (!state.activeProject || !state.activeScheme) {
+        ctx.ui.notify("No active project/scheme. Use /project first.", "error");
+        return;
+      }
+
+      const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
+      const configuration = state.activeConfiguration ?? "Debug";
+
+      let destination: string | undefined;
+      let destinationLabel: string | undefined;
+      if (state.activeDestination) {
+        destination = buildDestinationString(state.activeDestination);
+        destinationLabel = formatDestinationLabel(state.activeDestination);
+      }
+
+      const args = buildBuildArgs({
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme: state.activeScheme.name,
+        configuration,
+        destination,
+      });
+
+      const destSuffix = destinationLabel ? ` → ${destinationLabel}` : "";
+      ctx.ui.notify(`Building ${state.activeScheme.name} (${configuration})${destSuffix}...`, "info");
+
+      const result = await exec("xcodebuild", args, { timeout: 600_000, cwd: xcodeArgs.execCwd });
+      const combined = result.stdout + "\n" + result.stderr;
+      const buildResult = parseBuildResult(combined);
+
+      ctx.ui.notify(formatBuildResult(buildResult), buildResult.success ? "info" : "error");
     },
   });
 
