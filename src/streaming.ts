@@ -38,13 +38,18 @@ export function createBuildExec(state: XcodeState, execFn?: ExecFn) {
   ): Promise<ExecResult> => {
     state.completedTasks = 0;
 
-    // If we have an injected exec (e.g. in tests), use it with post-hoc counting
+    // If we have an injected exec (e.g. in tests/tools), use it with post-hoc counting
     if (execFn) {
-      return execFn(command, args, options).then((result) => {
-        const combined = result.stdout + "\n" + result.stderr;
-        state.completedTasks = countTasks(combined);
-        return result;
-      });
+      return execFn(command, args, options).then(
+        (result) => {
+          const combined = result.stdout + "\n" + result.stderr;
+          state.completedTasks = countTasks(combined);
+          return result;
+        },
+        (error) => {
+          return { stdout: "", stderr: String(error), code: 1, killed: false } as ExecResult;
+        },
+      );
     }
 
     // Real mode: spawn directly for real-time task counting
@@ -170,15 +175,21 @@ export function createTestExec(state: XcodeState, execFn?: ExecFn) {
     state.passedTests = 0;
     state.failedTests = 0;
 
-    // If we have an injected exec (e.g. in tests), use it with post-hoc counting
+    // If we have an injected exec (e.g. in tests/tools), use it with post-hoc counting
     if (execFn) {
-      return execFn(command, args, options).then((result) => {
-        const combined = result.stdout + "\n" + result.stderr;
-        const counts = countTests(combined);
-        state.passedTests = counts.passed;
-        state.failedTests = counts.failed;
-        return result;
-      });
+      return execFn(command, args, options).then(
+        (result) => {
+          const combined = result.stdout + "\n" + result.stderr;
+          const counts = countTests(combined);
+          state.passedTests = counts.passed;
+          state.failedTests = counts.failed;
+          return result;
+        },
+        (error) => {
+          // pi.exec may reject on non-zero exit — return a synthetic result
+          return { stdout: "", stderr: String(error), code: 1, killed: false } as ExecResult;
+        },
+      );
     }
 
     // Real mode: spawn directly for real-time counting
