@@ -30,6 +30,10 @@ function createMockUI() {
     select: vi.fn(async () => undefined as string | undefined),
     setStatus: vi.fn(),
     notify: vi.fn(),
+    theme: {
+      fg: (_color: string, text: string) => text,
+      bold: (text: string) => text,
+    },
   };
 }
 
@@ -202,7 +206,7 @@ describe("updateStatusBar", () => {
     expect(ui.setStatus).toHaveBeenCalledWith("xcode", undefined);
   });
 
-  it("shows project | scheme | destination", () => {
+  it("shows project · scheme · destination", () => {
     const state = createState();
     state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
     state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
@@ -210,7 +214,7 @@ describe("updateStatusBar", () => {
 
     const ui = createMockUI();
     updateStatusBar("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📁 App.xcodeproj | 🔨 App | 📱 iPhone 17 (18.0)");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj · App · iPhone 17 18.0");
   });
 
   it("shows project only when no scheme or destination", () => {
@@ -219,27 +223,27 @@ describe("updateStatusBar", () => {
 
     const ui = createMockUI();
     updateStatusBar("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📁 App.xcodeproj");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj");
   });
 
-  it("shows 📦 for package type", () => {
+  it("shows package type", () => {
     const state = createState();
     state.activeProject = { path: "/project/Package.swift", type: "package" };
     state.activeScheme = { name: "MyLib", project: "/project/Package.swift" };
 
     const ui = createMockUI();
     updateStatusBar("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📦 Package.swift | 🔨 MyLib");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "Package.swift · MyLib");
   });
 
-  it("shows 🗂️ for workspace type", () => {
+  it("shows workspace type", () => {
     const state = createState();
     state.activeProject = { path: "/project/App.xcworkspace", type: "workspace" };
     state.activeScheme = { name: "App", project: "/project/App.xcworkspace" };
 
     const ui = createMockUI();
     updateStatusBar("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "🗂️ App.xcworkspace | 🔨 App");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcworkspace · App");
   });
 
   it("shows nested relative path", () => {
@@ -248,7 +252,7 @@ describe("updateStatusBar", () => {
 
     const ui = createMockUI();
     updateStatusBar("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📁 sub/App.xcodeproj");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "sub/App.xcodeproj");
   });
 });
 
@@ -282,8 +286,8 @@ describe("autoDetect", () => {
     expect(state.activeDestination?.name).toBe("iPhone 16");
     expect(state.availableDestinations).toHaveLength(2);
 
-    // Unified status bar updated
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "📁 App.xcodeproj | 🔨 App | 📱 iPhone 16 (18.0)");
+    // Unified status bar updated (mock theme returns unstyled text)
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj · App · iPhone 16 18.0");
 
     // No select prompts shown
     expect(ui.select).not.toHaveBeenCalled();

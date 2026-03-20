@@ -14,11 +14,18 @@ export interface ResolvedProject {
   scheme: string | undefined;
 }
 
+/** Theme subset needed for styled status bar text. */
+export interface ResolveTheme {
+  fg(color: string, text: string): string;
+  bold(text: string): string;
+}
+
 /** Minimal UI surface needed by resolution logic. */
 export interface ResolveUI {
   select(prompt: string, options: string[]): Promise<string | undefined>;
   setStatus(key: string, value: string | undefined): void;
   notify(msg: string, level: "info" | "warning" | "error"): void;
+  theme: ResolveTheme;
 }
 
 // ── Resolution ─────────────────────────────────────────────────────────────
@@ -114,7 +121,7 @@ export async function discoverAndSelect(
 export async function refreshSchemes(
   exec: ExecFn,
   state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus">,
+  ui: Pick<ResolveUI, "setStatus" | "theme">,
 ): Promise<void> {
   if (!state.activeProject) {
     state.availableSchemes = [];
@@ -144,7 +151,7 @@ export async function refreshSchemes(
 export async function refreshDestinations(
   exec: ExecFn,
   state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus">,
+  ui: Pick<ResolveUI, "setStatus" | "theme">,
 ): Promise<void> {
   if (!state.activeProject || !state.activeScheme) {
     state.availableDestinations = [];
@@ -204,39 +211,36 @@ export function formatDestinationLabel(d: Destination): string {
 
 /**
  * Update the unified status bar: `project | scheme | destination`
+ * Styled to match the native pi footer (dim text).
  */
 export function updateStatusBar(
   cwd: string,
   state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus">,
+  ui: Pick<ResolveUI, "setStatus" | "theme">,
 ): void {
+  const { theme } = ui;
   const parts: string[] = [];
 
   if (state.activeProject) {
     const label = path.relative(cwd, state.activeProject.path) || state.activeProject.path;
-    const icon =
-      state.activeProject.type === "workspace"
-        ? "🗂️"
-        : state.activeProject.type === "package"
-          ? "📦"
-          : "📁";
-    parts.push(`${icon} ${label}`);
+    parts.push(theme.fg("dim", label));
   }
 
   if (state.activeScheme) {
-    parts.push(`🔨 ${state.activeScheme.name}`);
+    parts.push(theme.fg("dim", state.activeScheme.name));
   }
 
   if (state.activeDestination) {
     const d = state.activeDestination;
-    const osLabel = d.os ? ` (${d.os})` : "";
-    parts.push(`📱 ${d.name}${osLabel}`);
+    const osLabel = d.os ? ` ${d.os}` : "";
+    parts.push(theme.fg("dim", `${d.name}${osLabel}`));
   }
 
   if (parts.length === 0) {
     ui.setStatus("xcode", undefined);
   } else {
-    ui.setStatus("xcode", parts.join(" | "));
+    const separator = theme.fg("dim", " · ");
+    ui.setStatus("xcode", parts.join(separator));
   }
 }
 
@@ -250,7 +254,7 @@ export async function autoDetect(
   exec: ExecFn,
   cwd: string,
   state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus">,
+  ui: Pick<ResolveUI, "setStatus" | "theme">,
 ): Promise<void> {
   // ── Project ──────────────────────────────────────────────────────────
   const projects = await discoverProjects(exec, cwd, 6);

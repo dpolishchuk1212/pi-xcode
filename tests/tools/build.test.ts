@@ -33,6 +33,10 @@ function createMockCtx() {
       select: vi.fn(async () => undefined),
       setStatus: vi.fn(),
       notify: vi.fn(),
+      theme: {
+        fg: (_color: string, text: string) => text,
+        bold: (text: string) => text,
+      },
     },
   };
 }
