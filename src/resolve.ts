@@ -311,6 +311,7 @@ export function startSpinner(
   stopSpinner(state);
 
   state.operationStartTime = Date.now();
+  state.completedTasks = 0;
   spinnerIndex = 0;
 
   const timer = setInterval(() => {
@@ -372,11 +373,12 @@ export function updateStatusBar(
     };
     const config = statusConfig[state.appStatus] ?? { color: "dim", label: state.appStatus };
 
-    // Elapsed time
+    // Elapsed time and task count
     let elapsed = "";
     if (state.operationStartTime && state.appStatus !== "running") {
       const seconds = Math.floor((Date.now() - state.operationStartTime) / 1000);
-      elapsed = ` ${seconds}s`;
+      const tasks = state.completedTasks > 0 ? ` [${state.completedTasks}]` : "";
+      elapsed = ` ${seconds}s${tasks}`;
     }
 
     // Spinner frame (for non-idle, non-running states)

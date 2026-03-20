@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import type { Destination, ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
 import { startOperation, clearOperation } from "../state.js";
+import { createBuildExec } from "../streaming.js";
 import {
   buildBuildArgs,
   buildDestinationString,
@@ -100,7 +101,8 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
 
         onUpdate?.({ content: [{ type: "text", text: `Building ${resolved.scheme ?? "project"} (${configuration}) for ${destLabel}...` }], details: undefined });
 
-        const buildExec = await exec("xcodebuild", buildCmdArgs, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+        const buildExecFn = createBuildExec(state, exec);
+        const buildExec = await buildExecFn("xcodebuild", buildCmdArgs, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
         const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
         const buildResult = parseBuildResult(buildOutput);
 

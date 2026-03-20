@@ -25,6 +25,7 @@ import { registerRunTool } from "./tools/run.js";
 import { registerTestTool } from "./tools/test.js";
 import { registerProfileTool } from "./tools/profile.js";
 import { registerStopTool, stopActiveOperation } from "./tools/stop.js";
+import { createBuildExec } from "./streaming.js";
 
 function createExec(pi: ExtensionAPI): ExecFn {
   return (command, args, options) => pi.exec(command, args, options);
@@ -246,7 +247,8 @@ export default function (pi: ExtensionAPI) {
 
       const signal = startOperation(state, `Build ${state.activeScheme.name} (${configuration})${destSuffix}`);
       try {
-        const result = await exec("xcodebuild", args, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+        const buildExec = createBuildExec(state);
+        const result = await buildExec("xcodebuild", args, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
         const combined = result.stdout + "\n" + result.stderr;
         const buildResult = parseBuildResult(combined);
 
@@ -308,7 +310,8 @@ export default function (pi: ExtensionAPI) {
           destination: destinationStr,
         });
 
-        const buildExec = await exec("xcodebuild", buildCmdArgs, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+        const streamingExec = createBuildExec(state);
+        const buildExec = await streamingExec("xcodebuild", buildCmdArgs, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
         const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
         const buildResult = parseBuildResult(buildOutput);
 

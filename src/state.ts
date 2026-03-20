@@ -23,6 +23,8 @@ export interface XcodeState {
   stopSpinner: (() => void) | undefined;
   /** Timestamp when the current operation started (for elapsed time display). */
   operationStartTime: number | undefined;
+  /** Number of completed build tasks (for progress display). */
+  completedTasks: number;
 }
 
 export function createState(): XcodeState {
@@ -40,6 +42,7 @@ export function createState(): XcodeState {
     activeOperationLabel: undefined,
     stopSpinner: undefined,
     operationStartTime: undefined,
+    completedTasks: 0,
   };
 }
 

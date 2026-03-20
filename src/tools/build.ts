@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
 import { startOperation, clearOperation } from "../state.js";
+import { createBuildExec } from "../streaming.js";
 import { buildBuildArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
 import { parseBuildResult } from "../parsers.js";
 import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel, startSpinner, stopSpinner } from "../resolve.js";
@@ -72,7 +73,8 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       startSpinner(cwd, state, ctx.ui);
 
       try {
-        const result = await exec("xcodebuild", args, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+        const buildExecFn = createBuildExec(state, exec);
+        const result = await buildExecFn("xcodebuild", args, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
         const combined = result.stdout + "\n" + result.stderr;
         const buildResult = parseBuildResult(combined);
 

@@ -4,6 +4,7 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
 import { startOperation, clearOperation } from "../state.js";
+import { createBuildExec } from "../streaming.js";
 import {
   buildBuildArgs,
   buildDestinationString,
@@ -92,7 +93,8 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
       startSpinner(cwd, state, ctx.ui);
 
       try {
-      const buildExec = await exec("xcodebuild", buildCmdArgs, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+      const buildExecFn = createBuildExec(state, exec);
+      const buildExec = await buildExecFn("xcodebuild", buildCmdArgs, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
       const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
       const buildResult = parseBuildResult(buildOutput);
 
