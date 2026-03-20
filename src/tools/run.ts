@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { ExecFn } from "../types.js";
+import type { XcodeState } from "../state.js";
 import {
   buildBuildArgs,
   buildShowSettingsArgs,
@@ -13,7 +14,7 @@ import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
 import { discover, autoSelect, discoverSimulators, findSimulator } from "../discovery.js";
 import { formatBuildResult } from "../format.js";
 
-export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
+export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
     name: "xcode_run",
     label: "Xcode Run",
@@ -35,7 +36,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
 
     async execute(_toolCallId, params, signal, onUpdate) {
       // ── Discover project/scheme ──────────────────────────────────────
-      onUpdate?.({ content: [{ type: "text", text: "Discovering project and simulator..." }] });
+      onUpdate?.({ content: [{ type: "text", text: "Discovering project and simulator..." }], details: undefined });
 
       let projectArg = params.workspace ?? params.project;
       let schemeArg = params.scheme;
@@ -51,9 +52,10 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
         throw new Error("No Xcode project or workspace found. Specify one explicitly.");
       }
 
-      // ── Find simulator ───────────────────────────────────────────────
+      // ── Find simulator: explicit param > active simulator > auto-detect
       const simulators = await discoverSimulators(exec);
-      const sim = findSimulator(simulators, params.simulator);
+      const simNameOrUdid = params.simulator ?? state.activeSimulator?.udid;
+      const sim = findSimulator(simulators, simNameOrUdid);
 
       if (!sim) {
         throw new Error(
@@ -77,7 +79,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
           destination,
         });
 
-        onUpdate?.({ content: [{ type: "text", text: `Building for ${sim.name}...` }] });
+        onUpdate?.({ content: [{ type: "text", text: `Building for ${sim.name}...` }], details: undefined });
 
         const buildExec = await exec("xcodebuild", buildArgs, { signal, timeout: 600_000 });
         buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
@@ -92,7 +94,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
       }
 
       // ── Get bundle ID and app path ───────────────────────────────────
-      onUpdate?.({ content: [{ type: "text", text: "Resolving app info..." }] });
+      onUpdate?.({ content: [{ type: "text", text: "Resolving app info..." }], details: undefined });
 
       const settingsArgs = buildShowSettingsArgs({
         project: params.workspace ? undefined : projectArg,
@@ -116,17 +118,17 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
 
       // ── Boot simulator ───────────────────────────────────────────────
       if (sim.state !== "Booted") {
-        onUpdate?.({ content: [{ type: "text", text: `Booting ${sim.name}...` }] });
+        onUpdate?.({ content: [{ type: "text", text: `Booting ${sim.name}...` }], details: undefined });
         await exec("xcrun", buildSimctlBootArgs(sim.udid), { timeout: 30_000 });
         // Open Simulator.app
         await exec("open", ["-a", "Simulator"], { timeout: 5_000 });
       }
 
       // ── Install & launch ─────────────────────────────────────────────
-      onUpdate?.({ content: [{ type: "text", text: `Installing on ${sim.name}...` }] });
+      onUpdate?.({ content: [{ type: "text", text: `Installing on ${sim.name}...` }], details: undefined });
       await exec("xcrun", buildSimctlInstallArgs(sim.udid, appPath), { signal, timeout: 60_000 });
 
-      onUpdate?.({ content: [{ type: "text", text: `Launching ${bundleId}...` }] });
+      onUpdate?.({ content: [{ type: "text", text: `Launching ${bundleId}...` }], details: undefined });
       const launchResult = await exec("xcrun", buildSimctlLaunchArgs(sim.udid, bundleId), {
         signal,
         timeout: 30_000,

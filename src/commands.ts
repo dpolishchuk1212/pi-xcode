@@ -138,13 +138,6 @@ export function buildSimctlLaunchArgs(udid: string, bundleId: string, waitForDeb
 }
 
 /**
- * `open -a Simulator` arguments to open Simulator.app.
- */
-export function buildOpenSimulatorArgs(): string[] {
-  return ["-a", "Simulator"];
-}
-
-/**
  * `xcrun xctrace record` arguments for profiling.
  */
 export function buildXctraceArgs(opts: {

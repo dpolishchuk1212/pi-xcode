@@ -75,20 +75,4 @@ export interface TestResult {
   rawOutput: string;
 }
 
-// ── Run types ──────────────────────────────────────────────────────────────
 
-export interface RunResult {
-  build: BuildResult;
-  launched: boolean;
-  bundleId?: string;
-  simulator?: string;
-  appPath?: string;
-}
-
-// ── Profile types ──────────────────────────────────────────────────────────
-
-export interface ProfileResult {
-  build: BuildResult;
-  tracePath?: string;
-  template: string;
-}

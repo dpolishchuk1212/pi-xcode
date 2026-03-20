@@ -1,12 +1,13 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { ExecFn } from "../types.js";
+import type { XcodeState } from "../state.js";
 import { buildTestArgs, buildSimulatorDestination } from "../commands.js";
 import { parseTestResult } from "../parsers.js";
 import { discover, autoSelect, discoverSimulators, findSimulator } from "../discovery.js";
 import { formatTestResult } from "../format.js";
 
-export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
+export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
     name: "xcode_test",
     label: "Xcode Test",
@@ -32,7 +33,7 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
     }),
 
     async execute(_toolCallId, params, signal, onUpdate) {
-      onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }] });
+      onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
 
       let projectArg = params.workspace ?? params.project;
       let schemeArg = params.scheme;
@@ -48,10 +49,13 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
         throw new Error("No Xcode project or workspace found. Specify one explicitly.");
       }
 
-      // Resolve destination
+      // Resolve destination: explicit param > active simulator > auto-detect
       let destination = params.destination;
       if (!destination && params.simulator) {
         destination = buildSimulatorDestination(params.simulator);
+      }
+      if (!destination && state.activeSimulator) {
+        destination = buildSimulatorDestination(state.activeSimulator.udid);
       }
       if (!destination) {
         const simulators = await discoverSimulators(exec);
@@ -72,7 +76,7 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
         skipTesting: params.skipTesting,
       });
 
-      onUpdate?.({ content: [{ type: "text", text: `Running tests: xcodebuild ${args.join(" ")}` }] });
+      onUpdate?.({ content: [{ type: "text", text: `Running tests: xcodebuild ${args.join(" ")}` }], details: undefined });
 
       const result = await exec("xcodebuild", args, { signal, timeout: 1_200_000 });
       const combined = result.stdout + "\n" + result.stderr;

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ExecFn, ExecResult } from "../../src/types.js";
 import { registerBuildTool } from "../../src/tools/build.js";
+import { createState } from "../../src/state.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ describe("xcode_build tool", () => {
 
   it("registers the tool", () => {
     const exec = createMockExec([]);
-    registerBuildTool(mockPi as any, exec, "/project");
+    registerBuildTool(mockPi as any, exec, "/project", createState());
     expect(mockPi.registerTool).toHaveBeenCalledOnce();
     expect(mockPi.getTool("xcode_build")).toBeDefined();
   });
@@ -53,7 +54,7 @@ describe("xcode_build tool", () => {
       ],
     ]);
 
-    registerBuildTool(mockPi as any, exec, "/project");
+    registerBuildTool(mockPi as any, exec, "/project", createState());
     const tool = mockPi.getTool("xcode_build");
 
     const result = await tool.execute("call-1", {
@@ -78,7 +79,7 @@ describe("xcode_build tool", () => {
       ],
     ]);
 
-    registerBuildTool(mockPi as any, exec, "/project");
+    registerBuildTool(mockPi as any, exec, "/project", createState());
     const tool = mockPi.getTool("xcode_build");
 
     const result = await tool.execute("call-1", {
@@ -100,7 +101,7 @@ describe("xcode_build tool", () => {
       ["build", { stdout: "** BUILD SUCCEEDED **\n" }],
     ]);
 
-    registerBuildTool(mockPi as any, exec, "/project");
+    registerBuildTool(mockPi as any, exec, "/project", createState());
     const tool = mockPi.getTool("xcode_build");
 
     const result = await tool.execute("call-1", {}, undefined, vi.fn());
@@ -119,7 +120,7 @@ describe("xcode_build tool", () => {
       ["simctl", { stdout: JSON.stringify({ devices: {} }) }],
     ]);
 
-    registerBuildTool(mockPi as any, exec, "/empty");
+    registerBuildTool(mockPi as any, exec, "/empty", createState());
     const tool = mockPi.getTool("xcode_build");
 
     await expect(tool.execute("call-1", {}, undefined, vi.fn())).rejects.toThrow(

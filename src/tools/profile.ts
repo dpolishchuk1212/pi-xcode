@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExecFn } from "../types.js";
+import type { XcodeState } from "../state.js";
 import {
   buildBuildArgs,
   buildShowSettingsArgs,
@@ -23,7 +24,7 @@ const TEMPLATES = [
   "SwiftUI",
 ] as const;
 
-export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
+export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
     name: "xcode_profile",
     label: "Xcode Profile",
@@ -45,7 +46,7 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string)
     }),
 
     async execute(_toolCallId, params, signal, onUpdate) {
-      onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }] });
+      onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
 
       let projectArg = params.workspace ?? params.project;
       let schemeArg = params.scheme;
@@ -61,9 +62,10 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string)
         throw new Error("No Xcode project or workspace found. Specify one explicitly.");
       }
 
-      // Find simulator
+      // Find simulator: explicit param > active simulator > auto-detect
       const simulators = await discoverSimulators(exec);
-      const sim = findSimulator(simulators, params.simulator);
+      const simNameOrUdid = params.simulator ?? state.activeSimulator?.udid;
+      const sim = findSimulator(simulators, simNameOrUdid);
       if (!sim) {
         throw new Error("No simulator found. Specify one explicitly.");
       }
@@ -80,7 +82,7 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string)
         destination,
       });
 
-      onUpdate?.({ content: [{ type: "text", text: `Building (${config}) for profiling...` }] });
+      onUpdate?.({ content: [{ type: "text", text: `Building (${config}) for profiling...` }], details: undefined });
 
       const buildExec = await exec("xcodebuild", buildArgs, { signal, timeout: 600_000 });
       const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
@@ -122,6 +124,7 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string)
 
       onUpdate?.({
         content: [{ type: "text", text: `Profiling with ${template} for ${timeLimit}s...` }],
+        details: undefined,
       });
 
       const profileResult = await exec("xcrun", xctraceArgs, { signal, timeout: (timeLimit + 60) * 1000 });

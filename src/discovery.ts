@@ -7,12 +7,15 @@ import { buildListArgs, buildSimctlListArgs } from "./commands.js";
 import { parseSchemeList, parseSimulatorList } from "./parsers.js";
 
 /**
- * Find .xcodeproj and .xcworkspace files in `cwd` (non-recursive, top-level only).
+ * Find .xcodeproj and .xcworkspace files in `cwd`.
+ * @param maxDepth - how deep to search (default: 1 = top-level only)
  */
-export async function discoverProjects(exec: ExecFn, cwd: string): Promise<XcodeProject[]> {
-  const result = await exec("find", [cwd, "-maxdepth", "1", "-name", "*.xcodeproj", "-o", "-name", "*.xcworkspace"], {
-    timeout: 5000,
-  });
+export async function discoverProjects(exec: ExecFn, cwd: string, maxDepth: number = 1): Promise<XcodeProject[]> {
+  const result = await exec(
+    "find",
+    [cwd, "-maxdepth", String(maxDepth), "(", "-name", "*.xcodeproj", "-o", "-name", "*.xcworkspace", ")"],
+    { timeout: 10000 },
+  );
 
   if (result.code !== 0) return [];
 
@@ -22,8 +25,9 @@ export async function discoverProjects(exec: ExecFn, cwd: string): Promise<Xcode
     const path = line.trim();
     if (!path) continue;
 
-    // Skip Pods workspace, SPM internal workspaces
+    // Skip Pods workspace, SPM internal workspaces, nested xcodeproj inside xcodeproj
     if (path.includes("/Pods/") || path.includes(".swiftpm/")) continue;
+    if (path.includes(".xcodeproj/")) continue;
 
     if (path.endsWith(".xcworkspace")) {
       projects.push({ path, type: "workspace" });

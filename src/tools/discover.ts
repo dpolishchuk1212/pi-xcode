@@ -16,7 +16,7 @@ export function registerDiscoverTool(pi: ExtensionAPI, exec: ExecFn, cwd: string
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, signal, onUpdate) {
-      onUpdate?.({ content: [{ type: "text", text: "Scanning for Xcode projects and simulators..." }] });
+      onUpdate?.({ content: [{ type: "text", text: "Scanning for Xcode projects and simulators..." }], details: undefined });
 
       const result = await discover(exec, cwd);
 

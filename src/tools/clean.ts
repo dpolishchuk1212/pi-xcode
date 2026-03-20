@@ -37,7 +37,7 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
         scheme: schemeArg,
       });
 
-      onUpdate?.({ content: [{ type: "text", text: `Cleaning: xcodebuild ${args.join(" ")}` }] });
+      onUpdate?.({ content: [{ type: "text", text: `Cleaning: xcodebuild ${args.join(" ")}` }], details: undefined });
 
       const result = await exec("xcodebuild", args, { signal, timeout: 120_000 });
       const success = result.code === 0;

@@ -1,12 +1,13 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { ExecFn } from "../types.js";
+import type { XcodeState } from "../state.js";
 import { buildBuildArgs, buildSimulatorDestination } from "../commands.js";
 import { parseBuildResult } from "../parsers.js";
-import { discover, autoSelect } from "../discovery.js";
+import { discover, autoSelect, discoverProjects, discoverSchemes, findSimulator, discoverSimulators } from "../discovery.js";
 import { formatBuildResult } from "../format.js";
 
-export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
+export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
     name: "xcode_build",
     label: "Xcode Build",
@@ -28,8 +29,8 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
       simulator: Type.Optional(Type.String({ description: "Simulator name or UDID (builds for this simulator)" })),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate) {
-      onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }] });
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
 
       // Auto-discover if not specified
       let projectArg = params.workspace ?? params.project;
@@ -45,16 +46,62 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
         if (!schemeArg && selected.scheme) {
           schemeArg = selected.scheme.name;
         }
+
+        // Nothing found at top level — search subdirectories and ask the user
+        if (!projectArg) {
+          onUpdate?.({ content: [{ type: "text", text: "No project in current directory, searching subdirectories..." }], details: undefined });
+          const deepProjects = await discoverProjects(exec, cwd, 4);
+
+          if (deepProjects.length === 0) {
+            throw new Error("No Xcode project or workspace found in current directory or subdirectories.");
+          }
+
+          if (deepProjects.length === 1) {
+            projectArg = deepProjects[0].path;
+          } else {
+            // Ask the user to pick
+            const options = deepProjects.map((p) => p.path);
+
+            const choice = await ctx.ui.select("Multiple Xcode projects found. Which one to build?", options);
+            if (choice === undefined) {
+              throw new Error("Build cancelled — no project selected.");
+            }
+
+            projectArg = choice;
+          }
+
+          // Discover schemes for the selected project
+          const schemes = await discoverSchemes(exec, projectArg!);
+          if (schemes.length > 0) {
+            const mainScheme = schemes.find((s) => !s.name.toLowerCase().includes("test")) ?? schemes[0];
+            schemeArg = mainScheme.name;
+          }
+        }
       }
 
       if (!projectArg) {
-        throw new Error("No Xcode project or workspace found in current directory. Specify one explicitly.");
+        throw new Error("No Xcode project or workspace found. Specify one explicitly.");
       }
 
-      // Resolve destination
+      // Resolve destination: explicit param > active simulator > auto-detect
       let destination = params.destination;
+      let simulatorName: string | undefined;
+
       if (!destination && params.simulator) {
         destination = buildSimulatorDestination(params.simulator);
+        simulatorName = params.simulator;
+      }
+      if (!destination && state.activeSimulator) {
+        destination = buildSimulatorDestination(state.activeSimulator.udid);
+        simulatorName = `${state.activeSimulator.name} (${state.activeSimulator.runtime})`;
+      }
+      if (!destination) {
+        const simulators = await discoverSimulators(exec);
+        const sim = findSimulator(simulators);
+        if (sim) {
+          destination = buildSimulatorDestination(sim.udid);
+          simulatorName = `${sim.name} (${sim.runtime})`;
+        }
       }
 
       const args = buildBuildArgs({
@@ -65,16 +112,21 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
         destination,
       });
 
-      onUpdate?.({ content: [{ type: "text", text: `Building: xcodebuild ${args.join(" ")}` }] });
+      const simLabel = simulatorName ? ` for ${simulatorName}` : "";
+      onUpdate?.({ content: [{ type: "text", text: `Building${simLabel}...` }], details: undefined });
 
       const result = await exec("xcodebuild", args, { signal, timeout: 600_000 });
       const combined = result.stdout + "\n" + result.stderr;
       const buildResult = parseBuildResult(combined);
 
+      const summary = formatBuildResult(buildResult);
+      const simulatorLine = simulatorName ? `\nSimulator: ${simulatorName}` : "";
+
       return {
-        content: [{ type: "text", text: formatBuildResult(buildResult) }],
+        content: [{ type: "text", text: summary + simulatorLine }],
         details: {
           success: buildResult.success,
+          simulator: simulatorName,
           errors: buildResult.issues.filter((i) => i.severity === "error"),
           warnings: buildResult.issues.filter((i) => i.severity === "warning"),
           command: `xcodebuild ${args.join(" ")}`,
