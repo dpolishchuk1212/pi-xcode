@@ -10,7 +10,8 @@ import {
   buildXctraceArgs,
 } from "../commands.js";
 import { parseAppPath, parseBuildResult } from "../parsers.js";
-import { discover, autoSelect, discoverSimulators, findSimulator } from "../discovery.js";
+import { discoverSimulators, findSimulator } from "../discovery.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
 
 const TEMPLATES = [
@@ -45,24 +46,19 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
       timeLimit: Type.Optional(Type.Number({ description: "Profiling time limit in seconds (default: 30)" })),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate) {
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
       onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
 
-      let projectArg = params.workspace ?? params.project;
-      let schemeArg = params.scheme;
+      // ── Resolve project and scheme ───────────────────────────────────
+      const resolved = await resolveProjectAndScheme(exec, cwd, state, ctx.ui, {
+        project: params.project,
+        workspace: params.workspace,
+        scheme: params.scheme,
+      });
 
-      if (!projectArg || !schemeArg) {
-        const discovery = await discover(exec, cwd);
-        const selected = autoSelect(discovery, schemeArg);
-        if (!projectArg && selected.project) projectArg = selected.project.path;
-        if (!schemeArg && selected.scheme) schemeArg = selected.scheme.name;
-      }
+      const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
 
-      if (!projectArg) {
-        throw new Error("No Xcode project or workspace found. Specify one explicitly.");
-      }
-
-      // Find simulator: explicit param > active simulator > auto-detect
+      // ── Find simulator: explicit param > active simulator > auto-detect
       const simulators = await discoverSimulators(exec);
       const simNameOrUdid = params.simulator ?? state.activeSimulator?.udid;
       const sim = findSimulator(simulators, simNameOrUdid);
@@ -74,17 +70,17 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
       const config = params.configuration ?? "Release";
 
       // ── Build ────────────────────────────────────────────────────────
-      const buildArgs = buildBuildArgs({
-        project: params.workspace ? undefined : projectArg,
-        workspace: params.workspace ?? (projectArg.endsWith(".xcworkspace") ? projectArg : undefined),
-        scheme: schemeArg,
+      const buildCmdArgs = buildBuildArgs({
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme: resolved.scheme,
         configuration: config,
         destination,
       });
 
       onUpdate?.({ content: [{ type: "text", text: `Building (${config}) for profiling...` }], details: undefined });
 
-      const buildExec = await exec("xcodebuild", buildArgs, { signal, timeout: 600_000 });
+      const buildExec = await exec("xcodebuild", buildCmdArgs, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
       const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
       const buildResult = parseBuildResult(buildOutput);
 
@@ -97,14 +93,14 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
 
       // ── Get app path ─────────────────────────────────────────────────
       const settingsArgs = buildShowSettingsArgs({
-        project: params.workspace ? undefined : projectArg,
-        workspace: params.workspace ?? (projectArg.endsWith(".xcworkspace") ? projectArg : undefined),
-        scheme: schemeArg,
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme: resolved.scheme,
         configuration: config,
         destination,
       });
 
-      const settingsResult = await exec("xcodebuild", settingsArgs, { signal, timeout: 30_000 });
+      const settingsResult = await exec("xcodebuild", settingsArgs, { signal, timeout: 30_000, cwd: xcodeArgs.execCwd });
       const appPath = parseAppPath(settingsResult.stdout);
 
       if (!appPath) {

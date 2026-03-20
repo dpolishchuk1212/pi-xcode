@@ -23,12 +23,13 @@ export function registerDiscoverTool(pi: ExtensionAPI, exec: ExecFn, cwd: string
       const lines: string[] = [];
 
       // Projects
-      lines.push("## Projects / Workspaces");
+      lines.push("## Projects / Workspaces / Packages");
       if (result.projects.length === 0) {
         lines.push("  (none found)");
       } else {
+        const icons: Record<string, string> = { workspace: "🗂️", project: "📁", package: "📦" };
         for (const p of result.projects) {
-          lines.push(`  ${p.type === "workspace" ? "📦" : "📁"} ${p.path}`);
+          lines.push(`  ${icons[p.type] ?? "📁"} ${p.path} [${p.type}]`);
         }
       }
 

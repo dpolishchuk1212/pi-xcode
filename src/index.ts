@@ -1,7 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import nodePath from "node:path";
 import type { ExecFn } from "./types.js";
 import { createState } from "./state.js";
-import { discoverSimulators } from "./discovery.js";
+import { discoverProjects, discoverSchemes, discoverSimulators } from "./discovery.js";
+import { discoverAndSelect, updateProjectStatus } from "./resolve.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
 import { registerDiscoverTool } from "./tools/discover.js";
@@ -16,6 +18,71 @@ function createExec(pi: ExtensionAPI): ExecFn {
 export default function (pi: ExtensionAPI) {
   const exec = createExec(pi);
   const state = createState();
+
+  // ── /project command ─────────────────────────────────────────────────
+  pi.registerCommand("project", {
+    description: "Select the active Xcode project, workspace, or Swift package for builds",
+    handler: async (_args, ctx) => {
+      const cwd = ctx.cwd;
+      const projects = await discoverProjects(exec, cwd, 6);
+
+      if (projects.length === 0) {
+        ctx.ui.notify("No Xcode projects, workspaces, or Package.swift found.", "error");
+        return;
+      }
+
+      const theme = ctx.ui.theme;
+
+      // ── Project selection ────────────────────────────────────────────
+      const formatProject = (p: (typeof projects)[number]) => {
+        const relativePath = nodePath.relative(cwd, p.path) || p.path;
+        let label = relativePath;
+        if (state.activeProject?.path === p.path) {
+          label += theme.fg("accent", " ★ active");
+        }
+        return label;
+      };
+
+      const projectOptions = projects.map(formatProject);
+      const projectChoice = await ctx.ui.select("Select a project:", projectOptions);
+      if (projectChoice === undefined) return;
+
+      const projectIdx = projectOptions.indexOf(projectChoice);
+      const selectedProject = projectIdx >= 0 ? projects[projectIdx] : undefined;
+      if (!selectedProject) return;
+
+      // ── Scheme selection ─────────────────────────────────────────────
+      const schemes = await discoverSchemes(exec, selectedProject.path);
+
+      let selectedScheme = schemes[0]; // fallback
+      if (schemes.length > 1) {
+        const formatScheme = (s: (typeof schemes)[number]) => {
+          let label = s.name;
+          if (state.activeScheme?.name === s.name && state.activeProject?.path === selectedProject.path) {
+            label += theme.fg("accent", " ★ active");
+          }
+          return label;
+        };
+
+        const schemeOptions = schemes.map(formatScheme);
+        const schemeChoice = await ctx.ui.select("Select a scheme:", schemeOptions);
+        if (schemeChoice === undefined) return;
+
+        const schemeIdx = schemeOptions.indexOf(schemeChoice);
+        selectedScheme = schemeIdx >= 0 ? schemes[schemeIdx] : undefined;
+      }
+
+      // ── Save to state ────────────────────────────────────────────────
+      state.activeProject = selectedProject;
+      state.activeScheme = selectedScheme;
+
+      updateProjectStatus(cwd, state, ctx.ui);
+
+      const relativePath = nodePath.relative(cwd, selectedProject.path) || selectedProject.path;
+      const schemeInfo = selectedScheme ? ` (scheme: ${selectedScheme.name})` : "";
+      ctx.ui.notify(`Active project: ${relativePath}${schemeInfo}`, "info");
+    },
+  });
 
   // ── /simulator command ───────────────────────────────────────────────
   pi.registerCommand("simulator", {
@@ -60,7 +127,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     const cwd = ctx.cwd;
     registerBuildTool(pi, exec, cwd, state);
-    registerCleanTool(pi, exec, cwd);
+    registerCleanTool(pi, exec, cwd, state);
     registerDiscoverTool(pi, exec, cwd);
     registerRunTool(pi, exec, cwd, state);
     registerTestTool(pi, exec, cwd, state);

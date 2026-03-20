@@ -4,7 +4,8 @@ import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
 import { buildBuildArgs, buildSimulatorDestination } from "../commands.js";
 import { parseBuildResult } from "../parsers.js";
-import { discover, autoSelect, discoverProjects, discoverSchemes, findSimulator, discoverSimulators } from "../discovery.js";
+import { discoverSimulators, findSimulator } from "../discovery.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
 
 export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
@@ -32,58 +33,16 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
 
-      // Auto-discover if not specified
-      let projectArg = params.workspace ?? params.project;
-      let schemeArg = params.scheme;
+      // ── Resolve project and scheme ───────────────────────────────────
+      const resolved = await resolveProjectAndScheme(exec, cwd, state, ctx.ui, {
+        project: params.project,
+        workspace: params.workspace,
+        scheme: params.scheme,
+      });
 
-      if (!projectArg || !schemeArg) {
-        const discovery = await discover(exec, cwd);
-        const selected = autoSelect(discovery, schemeArg);
+      const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
 
-        if (!projectArg && selected.project) {
-          projectArg = selected.project.path;
-        }
-        if (!schemeArg && selected.scheme) {
-          schemeArg = selected.scheme.name;
-        }
-
-        // Nothing found at top level — search subdirectories and ask the user
-        if (!projectArg) {
-          onUpdate?.({ content: [{ type: "text", text: "No project in current directory, searching subdirectories..." }], details: undefined });
-          const deepProjects = await discoverProjects(exec, cwd, 4);
-
-          if (deepProjects.length === 0) {
-            throw new Error("No Xcode project or workspace found in current directory or subdirectories.");
-          }
-
-          if (deepProjects.length === 1) {
-            projectArg = deepProjects[0].path;
-          } else {
-            // Ask the user to pick
-            const options = deepProjects.map((p) => p.path);
-
-            const choice = await ctx.ui.select("Multiple Xcode projects found. Which one to build?", options);
-            if (choice === undefined) {
-              throw new Error("Build cancelled — no project selected.");
-            }
-
-            projectArg = choice;
-          }
-
-          // Discover schemes for the selected project
-          const schemes = await discoverSchemes(exec, projectArg!);
-          if (schemes.length > 0) {
-            const mainScheme = schemes.find((s) => !s.name.toLowerCase().includes("test")) ?? schemes[0];
-            schemeArg = mainScheme.name;
-          }
-        }
-      }
-
-      if (!projectArg) {
-        throw new Error("No Xcode project or workspace found. Specify one explicitly.");
-      }
-
-      // Resolve destination: explicit param > active simulator > auto-detect
+      // ── Resolve destination ──────────────────────────────────────────
       let destination = params.destination;
       let simulatorName: string | undefined;
 
@@ -105,9 +64,9 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       }
 
       const args = buildBuildArgs({
-        project: params.workspace ? undefined : projectArg,
-        workspace: params.workspace ?? (projectArg.endsWith(".xcworkspace") ? projectArg : undefined),
-        scheme: schemeArg,
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme: resolved.scheme,
         configuration: params.configuration ?? "Debug",
         destination,
       });
@@ -115,7 +74,7 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       const simLabel = simulatorName ? ` for ${simulatorName}` : "";
       onUpdate?.({ content: [{ type: "text", text: `Building${simLabel}...` }], details: undefined });
 
-      const result = await exec("xcodebuild", args, { signal, timeout: 600_000 });
+      const result = await exec("xcodebuild", args, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
       const combined = result.stdout + "\n" + result.stderr;
       const buildResult = parseBuildResult(combined);
 

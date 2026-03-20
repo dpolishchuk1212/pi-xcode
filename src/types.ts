@@ -17,7 +17,7 @@ export type ExecFn = (
 
 export interface XcodeProject {
   path: string;
-  type: "project" | "workspace";
+  type: "project" | "workspace" | "package";
 }
 
 export interface XcodeScheme {

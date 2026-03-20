@@ -2,18 +2,42 @@
  * Auto-discover Xcode projects, workspaces, schemes, and simulators.
  */
 
+import nodePath from "node:path";
 import type { DiscoveryResult, ExecFn, Simulator, XcodeProject, XcodeScheme } from "./types.js";
 import { buildListArgs, buildSimctlListArgs } from "./commands.js";
 import { parseSchemeList, parseSimulatorList } from "./parsers.js";
 
 /**
- * Find .xcodeproj and .xcworkspace files in `cwd`.
+ * Find .xcodeproj, .xcworkspace, and Package.swift files in `cwd`.
  * @param maxDepth - how deep to search (default: 1 = top-level only)
  */
 export async function discoverProjects(exec: ExecFn, cwd: string, maxDepth: number = 1): Promise<XcodeProject[]> {
   const result = await exec(
     "find",
-    [cwd, "-maxdepth", String(maxDepth), "(", "-name", "*.xcodeproj", "-o", "-name", "*.xcworkspace", ")"],
+    [
+      cwd,
+      "-maxdepth",
+      String(maxDepth),
+      "(",
+      "-name",
+      "*.xcodeproj",
+      "-o",
+      "-name",
+      "*.xcworkspace",
+      "-o",
+      "-name",
+      "Package.swift",
+      ")",
+      "-not",
+      "-path",
+      "*/Pods/*",
+      "-not",
+      "-path",
+      "*/.swiftpm/*",
+      "-not",
+      "-path",
+      "*/.build/*",
+    ],
     { timeout: 10000 },
   );
 
@@ -22,24 +46,27 @@ export async function discoverProjects(exec: ExecFn, cwd: string, maxDepth: numb
   const projects: XcodeProject[] = [];
 
   for (const line of result.stdout.split("\n")) {
-    const path = line.trim();
-    if (!path) continue;
+    const p = line.trim();
+    if (!p) continue;
 
-    // Skip Pods workspace, SPM internal workspaces, nested xcodeproj inside xcodeproj
-    if (path.includes("/Pods/") || path.includes(".swiftpm/")) continue;
-    if (path.includes(".xcodeproj/")) continue;
+    // Skip Pods workspace, SPM internal workspaces, nested xcodeproj inside xcodeproj, build dirs
+    if (p.includes("/Pods/") || p.includes(".swiftpm/") || p.includes("/.build/")) continue;
+    if (p.includes(".xcodeproj/")) continue;
 
-    if (path.endsWith(".xcworkspace")) {
-      projects.push({ path, type: "workspace" });
-    } else if (path.endsWith(".xcodeproj")) {
-      projects.push({ path, type: "project" });
+    if (p.endsWith(".xcworkspace")) {
+      projects.push({ path: p, type: "workspace" });
+    } else if (p.endsWith(".xcodeproj")) {
+      projects.push({ path: p, type: "project" });
+    } else if (p.endsWith("Package.swift")) {
+      projects.push({ path: p, type: "package" });
     }
   }
 
-  // Prefer workspaces over projects (workspace includes pod/SPM deps)
+  // Prefer: workspace > project > package
+  const typeOrder: Record<XcodeProject["type"], number> = { workspace: 0, project: 1, package: 2 };
   projects.sort((a, b) => {
-    if (a.type === "workspace" && b.type !== "workspace") return -1;
-    if (b.type === "workspace" && a.type !== "workspace") return 1;
+    const orderDiff = typeOrder[a.type] - typeOrder[b.type];
+    if (orderDiff !== 0) return orderDiff;
     return a.path.localeCompare(b.path);
   });
 
@@ -47,11 +74,21 @@ export async function discoverProjects(exec: ExecFn, cwd: string, maxDepth: numb
 }
 
 /**
- * Discover schemes for a given project or workspace.
+ * Discover schemes for a given project, workspace, or Package.swift.
  */
 export async function discoverSchemes(exec: ExecFn, projectPath: string): Promise<XcodeScheme[]> {
-  const args = buildListArgs(projectPath);
-  const result = await exec("xcodebuild", args, { timeout: 15000 });
+  let args: string[];
+  let execCwd: string | undefined;
+
+  if (projectPath.endsWith("Package.swift")) {
+    // For Package.swift, run `xcodebuild -list` from the package directory
+    args = ["-list"];
+    execCwd = nodePath.dirname(projectPath);
+  } else {
+    args = buildListArgs(projectPath);
+  }
+
+  const result = await exec("xcodebuild", args, { timeout: 15000, cwd: execCwd });
 
   const combined = result.stdout + "\n" + result.stderr;
   return parseSchemeList(combined, projectPath);

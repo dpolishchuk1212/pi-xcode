@@ -27,6 +27,16 @@ function createMockExec(responses: [pattern: string, result: Partial<ExecResult>
   });
 }
 
+function createMockCtx() {
+  return {
+    ui: {
+      select: vi.fn(async () => undefined),
+      setStatus: vi.fn(),
+      notify: vi.fn(),
+    },
+  };
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("xcode_build tool", () => {
@@ -56,12 +66,13 @@ describe("xcode_build tool", () => {
 
     registerBuildTool(mockPi as any, exec, "/project", createState());
     const tool = mockPi.getTool("xcode_build");
+    const ctx = createMockCtx();
 
     const result = await tool.execute("call-1", {
       project: "App.xcodeproj",
       scheme: "App",
       configuration: "Debug",
-    }, undefined, vi.fn());
+    }, undefined, vi.fn(), ctx);
 
     expect(result.content[0].text).toContain("BUILD SUCCEEDED");
     expect(result.details.success).toBe(true);
@@ -81,11 +92,12 @@ describe("xcode_build tool", () => {
 
     registerBuildTool(mockPi as any, exec, "/project", createState());
     const tool = mockPi.getTool("xcode_build");
+    const ctx = createMockCtx();
 
     const result = await tool.execute("call-1", {
       project: "App.xcodeproj",
       scheme: "App",
-    }, undefined, vi.fn());
+    }, undefined, vi.fn(), ctx);
 
     expect(result.content[0].text).toContain("BUILD FAILED");
     expect(result.details.success).toBe(false);
@@ -103,8 +115,9 @@ describe("xcode_build tool", () => {
 
     registerBuildTool(mockPi as any, exec, "/project", createState());
     const tool = mockPi.getTool("xcode_build");
+    const ctx = createMockCtx();
 
-    const result = await tool.execute("call-1", {}, undefined, vi.fn());
+    const result = await tool.execute("call-1", {}, undefined, vi.fn(), ctx);
     expect(result.details.success).toBe(true);
     // Verify xcodebuild was called with discovered project
     expect(exec).toHaveBeenCalledWith(
@@ -122,9 +135,10 @@ describe("xcode_build tool", () => {
 
     registerBuildTool(mockPi as any, exec, "/empty", createState());
     const tool = mockPi.getTool("xcode_build");
+    const ctx = createMockCtx();
 
-    await expect(tool.execute("call-1", {}, undefined, vi.fn())).rejects.toThrow(
-      /No Xcode project or workspace found/,
+    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(
+      /No Xcode project/,
     );
   });
 });

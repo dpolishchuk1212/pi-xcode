@@ -53,6 +53,47 @@ describe("discoverProjects", () => {
     expect(projects[0].path).toBe("/project/MyApp.xcodeproj");
   });
 
+  it("finds Package.swift files", async () => {
+    const exec = mockExec({
+      find: {
+        stdout: "/project/Package.swift\n",
+      },
+    });
+
+    const projects = await discoverProjects(exec, "/project");
+    expect(projects).toHaveLength(1);
+    expect(projects[0].type).toBe("package");
+    expect(projects[0].path).toBe("/project/Package.swift");
+  });
+
+  it("sorts: workspace > project > package", async () => {
+    const exec = mockExec({
+      find: {
+        stdout: "/project/Package.swift\n/project/App.xcodeproj\n/project/App.xcworkspace\n",
+      },
+    });
+
+    const projects = await discoverProjects(exec, "/project");
+    expect(projects).toHaveLength(3);
+    expect(projects[0].type).toBe("workspace");
+    expect(projects[1].type).toBe("project");
+    expect(projects[2].type).toBe("package");
+  });
+
+  it("filters out .build directory Package.swift", async () => {
+    const exec = mockExec({
+      find: {
+        stdout: `/project/Package.swift
+/project/.build/checkouts/Dep/Package.swift
+`,
+      },
+    });
+
+    const projects = await discoverProjects(exec, "/project");
+    expect(projects).toHaveLength(1);
+    expect(projects[0].path).toBe("/project/Package.swift");
+  });
+
   it("returns empty when find fails", async () => {
     const exec = mockExec({ find: { code: 1 } });
     const projects = await discoverProjects(exec, "/project");

@@ -11,7 +11,8 @@ import {
   buildSimulatorDestination,
 } from "../commands.js";
 import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
-import { discover, autoSelect, discoverSimulators, findSimulator } from "../discovery.js";
+import { discoverSimulators, findSimulator } from "../discovery.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
 
 export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
@@ -34,23 +35,17 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       skipBuild: Type.Optional(Type.Boolean({ description: "Skip the build step (default: false)" })),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate) {
-      // ── Discover project/scheme ──────────────────────────────────────
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      // ── Resolve project/scheme ──────────────────────────────────────
       onUpdate?.({ content: [{ type: "text", text: "Discovering project and simulator..." }], details: undefined });
 
-      let projectArg = params.workspace ?? params.project;
-      let schemeArg = params.scheme;
+      const resolved = await resolveProjectAndScheme(exec, cwd, state, ctx.ui, {
+        project: params.project,
+        workspace: params.workspace,
+        scheme: params.scheme,
+      });
 
-      if (!projectArg || !schemeArg) {
-        const discovery = await discover(exec, cwd);
-        const selected = autoSelect(discovery, schemeArg);
-        if (!projectArg && selected.project) projectArg = selected.project.path;
-        if (!schemeArg && selected.scheme) schemeArg = selected.scheme.name;
-      }
-
-      if (!projectArg) {
-        throw new Error("No Xcode project or workspace found. Specify one explicitly.");
-      }
+      const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
 
       // ── Find simulator: explicit param > active simulator > auto-detect
       const simulators = await discoverSimulators(exec);
@@ -71,17 +66,17 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       let buildOutput = "";
 
       if (!params.skipBuild) {
-        const buildArgs = buildBuildArgs({
-          project: params.workspace ? undefined : projectArg,
-          workspace: params.workspace ?? (projectArg.endsWith(".xcworkspace") ? projectArg : undefined),
-          scheme: schemeArg,
+        const buildCmdArgs = buildBuildArgs({
+          project: xcodeArgs.projectFlag,
+          workspace: xcodeArgs.workspaceFlag,
+          scheme: resolved.scheme,
           configuration: params.configuration ?? "Debug",
           destination,
         });
 
         onUpdate?.({ content: [{ type: "text", text: `Building for ${sim.name}...` }], details: undefined });
 
-        const buildExec = await exec("xcodebuild", buildArgs, { signal, timeout: 600_000 });
+        const buildExec = await exec("xcodebuild", buildCmdArgs, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
         buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
         const buildResult = parseBuildResult(buildOutput);
 
@@ -97,14 +92,14 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       onUpdate?.({ content: [{ type: "text", text: "Resolving app info..." }], details: undefined });
 
       const settingsArgs = buildShowSettingsArgs({
-        project: params.workspace ? undefined : projectArg,
-        workspace: params.workspace ?? (projectArg.endsWith(".xcworkspace") ? projectArg : undefined),
-        scheme: schemeArg,
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme: resolved.scheme,
         configuration: params.configuration ?? "Debug",
         destination,
       });
 
-      const settingsResult = await exec("xcodebuild", settingsArgs, { signal, timeout: 30_000 });
+      const settingsResult = await exec("xcodebuild", settingsArgs, { signal, timeout: 30_000, cwd: xcodeArgs.execCwd });
       const settingsOutput = settingsResult.stdout;
       const bundleId = parseBundleId(settingsOutput);
       const appPath = parseAppPath(settingsOutput);

@@ -4,7 +4,8 @@ import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
 import { buildTestArgs, buildSimulatorDestination } from "../commands.js";
 import { parseTestResult } from "../parsers.js";
-import { discover, autoSelect, discoverSimulators, findSimulator } from "../discovery.js";
+import { discoverSimulators, findSimulator } from "../discovery.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
 import { formatTestResult } from "../format.js";
 
 export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
@@ -32,24 +33,19 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       skipTesting: Type.Optional(Type.Array(Type.String(), { description: "Skip these tests" })),
     }),
 
-    async execute(_toolCallId, params, signal, onUpdate) {
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
       onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
 
-      let projectArg = params.workspace ?? params.project;
-      let schemeArg = params.scheme;
+      // ── Resolve project and scheme ───────────────────────────────────
+      const resolved = await resolveProjectAndScheme(exec, cwd, state, ctx.ui, {
+        project: params.project,
+        workspace: params.workspace,
+        scheme: params.scheme,
+      });
 
-      if (!projectArg || !schemeArg) {
-        const discovery = await discover(exec, cwd);
-        const selected = autoSelect(discovery, schemeArg);
-        if (!projectArg && selected.project) projectArg = selected.project.path;
-        if (!schemeArg && selected.scheme) schemeArg = selected.scheme.name;
-      }
+      const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
 
-      if (!projectArg) {
-        throw new Error("No Xcode project or workspace found. Specify one explicitly.");
-      }
-
-      // Resolve destination: explicit param > active simulator > auto-detect
+      // ── Resolve destination ──────────────────────────────────────────
       let destination = params.destination;
       if (!destination && params.simulator) {
         destination = buildSimulatorDestination(params.simulator);
@@ -66,9 +62,9 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       }
 
       const args = buildTestArgs({
-        project: params.workspace ? undefined : projectArg,
-        workspace: params.workspace ?? (projectArg.endsWith(".xcworkspace") ? projectArg : undefined),
-        scheme: schemeArg,
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme: resolved.scheme,
         configuration: params.configuration ?? "Debug",
         destination,
         testPlan: params.testPlan,
@@ -78,7 +74,7 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
 
       onUpdate?.({ content: [{ type: "text", text: `Running tests: xcodebuild ${args.join(" ")}` }], details: undefined });
 
-      const result = await exec("xcodebuild", args, { signal, timeout: 1_200_000 });
+      const result = await exec("xcodebuild", args, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
       const combined = result.stdout + "\n" + result.stderr;
       const testResult = parseTestResult(combined);
 

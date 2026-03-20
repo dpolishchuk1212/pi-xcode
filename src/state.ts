@@ -1,4 +1,4 @@
-import type { Simulator } from "./types.js";
+import type { Simulator, XcodeProject, XcodeScheme } from "./types.js";
 
 /**
  * Shared mutable state for the extension session.
@@ -6,10 +6,14 @@ import type { Simulator } from "./types.js";
  */
 export interface XcodeState {
   activeSimulator: Simulator | undefined;
+  activeProject: XcodeProject | undefined;
+  activeScheme: XcodeScheme | undefined;
 }
 
 export function createState(): XcodeState {
   return {
     activeSimulator: undefined,
+    activeProject: undefined,
+    activeScheme: undefined,
   };
 }
