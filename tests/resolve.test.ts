@@ -265,7 +265,7 @@ describe("updateStatusBar", () => {
 
     const ui = createMockUI();
     updateStatusBar("/project", state, ui);
-    expect(ui.setStatus).toHaveBeenCalledWith("xcode", "App.xcodeproj · App · ⏳ Building");
+    expect(ui.setStatus).toHaveBeenCalledWith("xcode", expect.stringContaining("Building"));
   });
 
   it("shows running status", () => {

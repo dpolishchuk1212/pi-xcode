@@ -5,7 +5,7 @@ import type { XcodeState } from "../state.js";
 import { startOperation, clearOperation } from "../state.js";
 import { buildBuildArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
 import { parseBuildResult } from "../parsers.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel } from "../resolve.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel, startSpinner, stopSpinner } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
 
 export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
@@ -69,6 +69,7 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       onUpdate?.({ content: [{ type: "text", text: `Building${destLabel}...` }], details: undefined });
 
       const combinedSignal = startOperation(state, `Build ${resolved.scheme ?? "project"} (${configuration})${destLabel}`, signal);
+      startSpinner(cwd, state, ctx.ui);
 
       try {
         const result = await exec("xcodebuild", args, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
@@ -90,6 +91,7 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
         };
       } finally {
         clearOperation(state);
+        stopSpinner(state);
       }
     },
   });

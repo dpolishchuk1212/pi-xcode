@@ -13,7 +13,7 @@ import {
 } from "../commands.js";
 import { parseAppPath, parseBuildResult } from "../parsers.js";
 import { discoverSimulators, findSimulator } from "../discovery.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs, startSpinner, stopSpinner } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
 
 const TEMPLATES = [
@@ -88,6 +88,8 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
       onUpdate?.({ content: [{ type: "text", text: `Building (${config}) for profiling...` }], details: undefined });
 
       const combinedSignal = startOperation(state, `Profile ${resolved.scheme ?? "project"} (${params.template ?? "Time Profiler"})`, signal);
+      state.appStatus = "profiling";
+      startSpinner(cwd, state, ctx.ui);
 
       try {
       const buildExec = await exec("xcodebuild", buildCmdArgs, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
@@ -162,6 +164,8 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
       };
       } finally {
         clearOperation(state);
+        stopSpinner(state);
+        state.appStatus = "idle";
       }
     },
   });

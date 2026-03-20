@@ -5,7 +5,7 @@ import type { XcodeState } from "../state.js";
 import { startOperation, clearOperation } from "../state.js";
 import { buildTestArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
 import { parseTestResult } from "../parsers.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs, updateStatusBar } from "../resolve.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs, updateStatusBar, startSpinner, stopSpinner } from "../resolve.js";
 import { formatTestResult } from "../format.js";
 
 export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
@@ -70,7 +70,7 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       onUpdate?.({ content: [{ type: "text", text: `Running tests: xcodebuild ${args.join(" ")}` }], details: undefined });
 
       state.appStatus = "testing";
-      updateStatusBar(cwd, state, ctx.ui);
+      startSpinner(cwd, state, ctx.ui);
 
       const combinedSignal = startOperation(state, `Test ${resolved.scheme ?? "project"}`, signal);
 
@@ -81,6 +81,7 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
         testResult = parseTestResult(combined);
       } finally {
         clearOperation(state);
+        stopSpinner(state);
         state.appStatus = "idle";
         updateStatusBar(cwd, state, ctx.ui);
       }

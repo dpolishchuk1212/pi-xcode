@@ -11,7 +11,7 @@ import {
 } from "../commands.js";
 import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
 import { discoverSimulators, findSimulator } from "../discovery.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel, updateStatusBar } from "../resolve.js";
+import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel, updateStatusBar, startSpinner, stopSpinner } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
 import { classifyDestination, terminateApp, ensureDestinationReady, installApp, launchApp, monitorAppLifecycle, destinationTypeLabel } from "../runner.js";
 
@@ -88,7 +88,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       // ── Build ────────────────────────────────────────────────────────
       if (!params.skipBuild) {
         state.appStatus = "building";
-        updateStatusBar(cwd, state, ctx.ui);
+        startSpinner(cwd, state, ctx.ui);
 
         const buildCmdArgs = buildBuildArgs({
           project: xcodeArgs.projectFlag,
@@ -106,6 +106,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
 
         if (!buildResult.success) {
           clearOperation(state);
+          stopSpinner(state);
           state.appStatus = "idle";
           updateStatusBar(cwd, state, ctx.ui);
           return {
@@ -133,6 +134,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
 
       if (!bundleId || !appPath) {
         clearOperation(state);
+        stopSpinner(state);
         state.appStatus = "idle";
         updateStatusBar(cwd, state, ctx.ui);
         throw new Error(
@@ -162,6 +164,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
 
       // Operation complete (build+install+launch phase is done)
       clearOperation(state);
+      stopSpinner(state);
 
       if (launchResult.success) {
         state.appStatus = "running";

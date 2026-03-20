@@ -10,6 +10,8 @@ import {
   refreshConfigurations,
   refreshDestinations,
   refreshSchemes,
+  startSpinner,
+  stopSpinner,
   updateStatusBar,
 } from "./resolve.js";
 import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs, buildTestArgs } from "./commands.js";
@@ -239,7 +241,7 @@ export default function (pi: ExtensionAPI) {
 
       const destSuffix = destinationLabel ? ` → ${destinationLabel}` : "";
       state.appStatus = "building";
-      updateStatusBar(ctx.cwd, state, ctx.ui);
+      startSpinner(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Building ${state.activeScheme.name} (${configuration})${destSuffix}...`, "info");
 
       const signal = startOperation(state, `Build ${state.activeScheme.name} (${configuration})${destSuffix}`);
@@ -251,6 +253,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify(formatBuildResult(buildResult), buildResult.success ? "info" : "error");
       } finally {
         clearOperation(state);
+        stopSpinner(state);
         state.appStatus = "idle";
         updateStatusBar(ctx.cwd, state, ctx.ui);
       }
@@ -294,7 +297,7 @@ export default function (pi: ExtensionAPI) {
       try {
         // ── Build ──────────────────────────────────────────────────────
         state.appStatus = "building";
-        updateStatusBar(ctx.cwd, state, ctx.ui);
+        startSpinner(ctx.cwd, state, ctx.ui);
         ctx.ui.notify(`Building ${scheme} (${configuration}) for ${destLabel}...`, "info");
 
         const buildCmdArgs = buildBuildArgs({
@@ -310,6 +313,7 @@ export default function (pi: ExtensionAPI) {
         const buildResult = parseBuildResult(buildOutput);
 
         if (!buildResult.success) {
+          stopSpinner(state);
           state.appStatus = "idle";
           updateStatusBar(ctx.cwd, state, ctx.ui);
           ctx.ui.notify(formatBuildResult(buildResult), "error");
@@ -330,6 +334,7 @@ export default function (pi: ExtensionAPI) {
         const appPath = parseAppPath(settingsResult.stdout);
 
         if (!bundleId || !appPath) {
+          stopSpinner(state);
           state.appStatus = "idle";
           updateStatusBar(ctx.cwd, state, ctx.ui);
           ctx.ui.notify("Could not determine bundle ID or app path. Make sure the scheme builds an app target.", "error");
@@ -351,6 +356,7 @@ export default function (pi: ExtensionAPI) {
 
         // Clear the operation before entering "running" state (build+launch phase done)
         clearOperation(state);
+        stopSpinner(state);
 
         if (launchResult.success) {
           state.appStatus = "running";
@@ -373,6 +379,7 @@ export default function (pi: ExtensionAPI) {
         }
       } catch (e) {
         clearOperation(state);
+        stopSpinner(state);
         state.appStatus = "idle";
         updateStatusBar(ctx.cwd, state, ctx.ui);
         throw e;
@@ -426,7 +433,7 @@ export default function (pi: ExtensionAPI) {
       const filterLabel = onlyTesting.length > 0 ? ` (${onlyTesting.join(", ")})` : "";
       const planLabel = testPlan ? ` [plan: ${testPlan}]` : "";
       state.appStatus = "testing";
-      updateStatusBar(ctx.cwd, state, ctx.ui);
+      startSpinner(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Testing ${state.activeScheme.name}${filterLabel}${planLabel} on ${destLabel}...`, "info");
 
       const signal = startOperation(state, `Test ${state.activeScheme.name}${filterLabel}${planLabel}`);
@@ -451,6 +458,7 @@ export default function (pi: ExtensionAPI) {
         }
       } finally {
         clearOperation(state);
+        stopSpinner(state);
         state.appStatus = "idle";
         updateStatusBar(ctx.cwd, state, ctx.ui);
       }

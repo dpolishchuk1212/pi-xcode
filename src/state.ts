@@ -19,6 +19,10 @@ export interface XcodeState {
   activeAbortController: AbortController | undefined;
   /** Label describing the currently active operation (for stop messages). */
   activeOperationLabel: string | undefined;
+  /** Cleanup function to stop the status bar spinner animation. */
+  stopSpinner: (() => void) | undefined;
+  /** Timestamp when the current operation started (for elapsed time display). */
+  operationStartTime: number | undefined;
 }
 
 export function createState(): XcodeState {
@@ -34,6 +38,8 @@ export function createState(): XcodeState {
     stopAppMonitor: undefined,
     activeAbortController: undefined,
     activeOperationLabel: undefined,
+    stopSpinner: undefined,
+    operationStartTime: undefined,
   };
 }
 

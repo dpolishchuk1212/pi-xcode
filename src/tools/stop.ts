@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import type { ExecFn } from "../types.js";
 import type { XcodeState } from "../state.js";
-import { updateStatusBar, type ResolveUI } from "../resolve.js";
+import { updateStatusBar, stopSpinner, type ResolveUI } from "../resolve.js";
 import { terminateApp, classifyDestination } from "../runner.js";
 
 /**
@@ -78,7 +78,8 @@ export async function stopActiveOperation(
     }
   }
 
-  // 5. Reset status
+  // 5. Stop spinner and reset status
+  stopSpinner(state);
   state.appStatus = "idle";
   updateStatusBar(cwd, state, ui);
 

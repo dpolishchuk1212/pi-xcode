@@ -295,6 +295,43 @@ export function formatDestinationLabel(d: Destination): string {
 
 // ── Status bar ─────────────────────────────────────────────────────────────
 
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+let spinnerIndex = 0;
+
+/**
+ * Start an animated spinner in the status bar. Updates every 100ms.
+ * Returns a cleanup function to stop the spinner.
+ */
+export function startSpinner(
+  cwd: string,
+  state: XcodeState,
+  ui: Pick<ResolveUI, "setStatus" | "theme">,
+): void {
+  // Stop any existing spinner
+  stopSpinner(state);
+
+  state.operationStartTime = Date.now();
+  spinnerIndex = 0;
+
+  const timer = setInterval(() => {
+    spinnerIndex++;
+    updateStatusBar(cwd, state, ui);
+  }, 100);
+
+  state.stopSpinner = () => {
+    clearInterval(timer);
+    state.stopSpinner = undefined;
+    state.operationStartTime = undefined;
+  };
+}
+
+/**
+ * Stop the status bar spinner animation.
+ */
+export function stopSpinner(state: XcodeState): void {
+  state.stopSpinner?.();
+}
+
 /**
  * Update the unified status bar: `project · scheme · configuration · destination`
  * Styled to match the native pi footer (dim text).
@@ -326,12 +363,26 @@ export function updateStatusBar(
     parts.push(theme.fg("dim", `${d.name}${osLabel}`));
   }
 
-  if (state.appStatus === "building") {
-    parts.push(theme.fg("warning", "⏳ Building"));
-  } else if (state.appStatus === "running") {
-    parts.push(theme.fg("accent", "▶ Running"));
-  } else if (state.appStatus === "testing") {
-    parts.push(theme.fg("warning", "🧪 Testing"));
+  if (state.appStatus !== "idle") {
+    const statusConfig: Record<string, { color: string; label: string }> = {
+      building: { color: "warning", label: "Building" },
+      testing: { color: "warning", label: "Testing" },
+      profiling: { color: "warning", label: "Profiling" },
+      running: { color: "accent", label: "Running" },
+    };
+    const config = statusConfig[state.appStatus] ?? { color: "dim", label: state.appStatus };
+
+    // Elapsed time
+    let elapsed = "";
+    if (state.operationStartTime && state.appStatus !== "running") {
+      const seconds = Math.floor((Date.now() - state.operationStartTime) / 1000);
+      elapsed = ` ${seconds}s`;
+    }
+
+    // Spinner frame (for non-idle, non-running states)
+    const spinnerFrame = state.appStatus !== "running" ? SPINNER_FRAMES[spinnerIndex % SPINNER_FRAMES.length] + " " : "▶ ";
+
+    parts.push(theme.fg(config.color, `${spinnerFrame}${config.label}${elapsed}`));
   }
 
   if (parts.length === 0) {
