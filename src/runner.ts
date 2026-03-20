@@ -190,7 +190,7 @@ export function monitorAppLifecycle(
   exec: ExecFn,
   pid: number,
   onExit: () => void,
-  intervalMs = 3000,
+  intervalMs = 1000,
 ): () => void {
   let stopped = false;
 
