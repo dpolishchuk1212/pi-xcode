@@ -1,33 +1,47 @@
+import nodePath from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { DynamicBorder, getSelectListTheme } from "@mariozechner/pi-coding-agent";
-import { fuzzyFilter, Input, Key, matchesKey, type SelectItem, SelectList, truncateToWidth } from "@mariozechner/pi-tui";
-import nodePath from "node:path";
-import type { ExecFn, SchemeProductType } from "./types.js";
-import { createState, startOperation, clearOperation } from "./state.js";
+import {
+  fuzzyFilter,
+  Input,
+  Key,
+  matchesKey,
+  type SelectItem,
+  SelectList,
+  truncateToWidth,
+} from "@mariozechner/pi-tui";
+import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs, buildTestArgs } from "./commands.js";
 import { discoverProjects } from "./discovery.js";
+import { formatBuildResult } from "./format.js";
+import { parseAppPath, parseBuildResult, parseBundleId, parseTestResult } from "./parsers.js";
 import {
   autoDetect,
   formatDestinationLabel,
   getXcodebuildProjectArgs,
-  refreshConfigurations,
   refreshDestinations,
   refreshSchemes,
   startSpinner,
   stopSpinner,
   updateStatusBar,
 } from "./resolve.js";
-import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs, buildTestArgs } from "./commands.js";
-import { parseAppPath, parseBuildResult, parseBundleId, parseTestResult } from "./parsers.js";
-import { formatBuildResult, formatTestResult } from "./format.js";
-import { terminateApp, ensureDestinationReady, installApp, launchApp, monitorAppLifecycle, destinationTypeLabel } from "./runner.js";
+import {
+  destinationTypeLabel,
+  ensureDestinationReady,
+  installApp,
+  launchApp,
+  monitorAppLifecycle,
+  terminateApp,
+} from "./runner.js";
+import { clearOperation, createState, startOperation } from "./state.js";
+import { createBuildExec, createTestExec } from "./streaming.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
 import { registerDiscoverTool } from "./tools/discover.js";
-import { registerRunTool } from "./tools/run.js";
-import { registerTestTool } from "./tools/test.js";
 import { registerProfileTool } from "./tools/profile.js";
+import { registerRunTool } from "./tools/run.js";
 import { registerStopTool, stopActiveOperation } from "./tools/stop.js";
-import { createBuildExec, createTestExec } from "./streaming.js";
+import { registerTestTool } from "./tools/test.js";
+import type { ExecFn, SchemeProductType } from "./types.js";
 
 function createExec(pi: ExtensionAPI): ExecFn {
   return (command, args, options) => pi.exec(command, args, options);
@@ -37,11 +51,7 @@ function createExec(pi: ExtensionAPI): ExecFn {
 
 const MAX_VISIBLE = 20;
 
-async function showFilterableSelect(
-  ctx: ExtensionContext,
-  title: string,
-  items: SelectItem[],
-): Promise<string | null> {
+async function showFilterableSelect(ctx: ExtensionContext, title: string, items: SelectItem[]): Promise<string | null> {
   return ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
     const topBorder = new DynamicBorder((s: string) => theme.fg("accent", s));
     const bottomBorder = new DynamicBorder((s: string) => theme.fg("accent", s));
@@ -61,9 +71,7 @@ async function showFilterableSelect(
 
     function applyFilter() {
       const query = searchInput.getValue();
-      filteredItems = query
-        ? fuzzyFilter(items, query, (item) => item.label)
-        : items;
+      filteredItems = query ? fuzzyFilter(items, query, (item) => item.label) : items;
       currentSelectList = makeSelectList(filteredItems);
     }
 
@@ -71,7 +79,12 @@ async function showFilterableSelect(
       render: (w: number) => {
         const lines: string[] = [];
         lines.push(...topBorder.render(w));
-        lines.push(truncateToWidth(` ${theme.fg("accent", theme.bold(title))} ${theme.fg("muted", `(${filteredItems.length})`)}`, w));
+        lines.push(
+          truncateToWidth(
+            ` ${theme.fg("accent", theme.bold(title))} ${theme.fg("muted", `(${filteredItems.length})`)}`,
+            w,
+          ),
+        );
         lines.push(...searchInput.render(w));
         lines.push("");
         lines.push(...currentSelectList.render(w));
@@ -167,11 +180,16 @@ export default function (pi: ExtensionAPI) {
 
       const productTypeLabel = (t?: SchemeProductType): string => {
         switch (t) {
-          case "app": return "Application";
-          case "framework": return "Framework";
-          case "test": return "Tests";
-          case "extension": return "Extension";
-          default: return "";
+          case "app":
+            return "Application";
+          case "framework":
+            return "Framework";
+          case "test":
+            return "Tests";
+          case "extension":
+            return "Extension";
+          default:
+            return "";
         }
       };
 
@@ -318,7 +336,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const buildExec = createBuildExec(state);
         const result = await buildExec("xcodebuild", args, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
-        const combined = result.stdout + "\n" + result.stderr;
+        const combined = `${result.stdout}\n${result.stderr}`;
         const buildResult = parseBuildResult(combined);
 
         ctx.ui.notify(formatBuildResult(buildResult), buildResult.success ? "info" : "error");
@@ -343,7 +361,7 @@ export default function (pi: ExtensionAPI) {
       // Optional scheme argument
       const schemeArg = args?.trim() || undefined;
       const scheme = schemeArg
-        ? state.availableSchemes.find((s) => s.name === schemeArg)?.name ?? schemeArg
+        ? (state.availableSchemes.find((s) => s.name === schemeArg)?.name ?? schemeArg)
         : state.activeScheme?.name;
 
       if (!scheme) {
@@ -380,8 +398,12 @@ export default function (pi: ExtensionAPI) {
         });
 
         const streamingExec = createBuildExec(state);
-        const buildExec = await streamingExec("xcodebuild", buildCmdArgs, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
-        const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
+        const buildExec = await streamingExec("xcodebuild", buildCmdArgs, {
+          signal,
+          timeout: 600_000,
+          cwd: xcodeArgs.execCwd,
+        });
+        const buildOutput = `${buildExec.stdout}\n${buildExec.stderr}`;
         const buildResult = parseBuildResult(buildOutput);
 
         if (!buildResult.success) {
@@ -401,7 +423,11 @@ export default function (pi: ExtensionAPI) {
           destination: destinationStr,
         });
 
-        const settingsResult = await exec("xcodebuild", settingsArgs, { signal, timeout: 30_000, cwd: xcodeArgs.execCwd });
+        const settingsResult = await exec("xcodebuild", settingsArgs, {
+          signal,
+          timeout: 30_000,
+          cwd: xcodeArgs.execCwd,
+        });
         const bundleId = parseBundleId(settingsResult.stdout);
         const appPath = parseAppPath(settingsResult.stdout);
 
@@ -409,7 +435,10 @@ export default function (pi: ExtensionAPI) {
           stopSpinner(state);
           state.appStatus = "idle";
           updateStatusBar(ctx.cwd, state, ctx.ui);
-          ctx.ui.notify("Could not determine bundle ID or app path. Make sure the scheme builds an app target.", "error");
+          ctx.ui.notify(
+            "Could not determine bundle ID or app path. Make sure the scheme builds an app target.",
+            "error",
+          );
           return;
         }
 
@@ -512,7 +541,7 @@ export default function (pi: ExtensionAPI) {
       try {
         const testExec = createTestExec(state);
         const result = await testExec("xcodebuild", testArgs, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
-        const combined = result.stdout + "\n" + result.stderr;
+        const combined = `${result.stdout}\n${result.stderr}`;
         const testResult = parseTestResult(combined);
 
         if (testResult.success) {
@@ -520,7 +549,9 @@ export default function (pi: ExtensionAPI) {
         } else {
           // Show failed tests
           const failedCases = testResult.cases.filter((c) => !c.passed);
-          const lines = [`❌ ${testResult.failed}/${testResult.total} tests failed (${testResult.duration.toFixed(1)}s)`];
+          const lines = [
+            `❌ ${testResult.failed}/${testResult.total} tests failed (${testResult.duration.toFixed(1)}s)`,
+          ];
           for (const tc of failedCases) {
             lines.push(`  ✗ ${tc.suite}.${tc.name}`);
             if (tc.failureMessage) {
@@ -559,7 +590,15 @@ export default function (pi: ExtensionAPI) {
     registerStopTool(pi, exec, sessionCwd, state);
 
     // Replace built-in xcode tools with our versions
-    const builtInXcodeTools = ["xcode_build", "xcode_clean", "xcode_discover", "xcode_run", "xcode_test", "xcode_profile", "xcode_stop"];
+    const builtInXcodeTools = [
+      "xcode_build",
+      "xcode_clean",
+      "xcode_discover",
+      "xcode_run",
+      "xcode_test",
+      "xcode_profile",
+      "xcode_stop",
+    ];
     const currentTools = pi.getActiveTools();
     const withoutBuiltIn = currentTools.filter((t) => !builtInXcodeTools.includes(t));
     pi.setActiveTools([...withoutBuiltIn, ...builtInXcodeTools]);

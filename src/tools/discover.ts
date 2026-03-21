@@ -1,22 +1,24 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { ExecFn } from "../types.js";
 import { discover } from "../discovery.js";
+import type { ExecFn } from "../types.js";
 
 export function registerDiscoverTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
   pi.registerTool({
     name: "xcode_discover",
     label: "Xcode Discover",
-    description:
-      "Discover Xcode projects, workspaces, schemes, and available simulators in the current directory.",
+    description: "Discover Xcode projects, workspaces, schemes, and available simulators in the current directory.",
     promptSnippet: "List Xcode projects, schemes, and available simulators",
     promptGuidelines: [
       "Use xcode_discover before building or running if you need to know available schemes or simulators.",
     ],
     parameters: Type.Object({}),
 
-    async execute(_toolCallId, _params, signal, onUpdate) {
-      onUpdate?.({ content: [{ type: "text", text: "Scanning for Xcode projects and simulators..." }], details: undefined });
+    async execute(_toolCallId, _params, _signal, onUpdate) {
+      onUpdate?.({
+        content: [{ type: "text", text: "Scanning for Xcode projects and simulators..." }],
+        details: undefined,
+      });
 
       const result = await discover(exec, cwd);
 

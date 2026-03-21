@@ -1,21 +1,15 @@
+import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
-import type { ExecFn } from "../types.js";
-import type { XcodeState } from "../state.js";
-import { startOperation, clearOperation } from "../state.js";
-import { createBuildExec } from "../streaming.js";
-import {
-  buildBuildArgs,
-  buildDestinationString,
-  buildShowSettingsArgs,
-  buildSimulatorDestination,
-  buildXctraceArgs,
-} from "../commands.js";
-import { parseAppPath, parseBuildResult } from "../parsers.js";
+import { buildBuildArgs, buildShowSettingsArgs, buildSimulatorDestination, buildXctraceArgs } from "../commands.js";
 import { discoverSimulators, findSimulator } from "../discovery.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs, startSpinner, stopSpinner } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
+import { parseAppPath, parseBuildResult } from "../parsers.js";
+import { getXcodebuildProjectArgs, resolveProjectAndScheme, startSpinner, stopSpinner } from "../resolve.js";
+import type { XcodeState } from "../state.js";
+import { clearOperation, startOperation } from "../state.js";
+import { createBuildExec } from "../streaming.js";
+import type { ExecFn } from "../types.js";
 
 const TEMPLATES = [
   "Time Profiler",
@@ -88,82 +82,97 @@ export function registerProfileTool(pi: ExtensionAPI, exec: ExecFn, cwd: string,
 
       onUpdate?.({ content: [{ type: "text", text: `Building (${config}) for profiling...` }], details: undefined });
 
-      const combinedSignal = startOperation(state, `Profile ${resolved.scheme ?? "project"} (${params.template ?? "Time Profiler"})`, signal);
+      const combinedSignal = startOperation(
+        state,
+        `Profile ${resolved.scheme ?? "project"} (${params.template ?? "Time Profiler"})`,
+        signal,
+      );
       state.appStatus = "profiling";
       startSpinner(cwd, state, ctx.ui);
 
       try {
-      const buildExecFn = createBuildExec(state, exec);
-      const buildExec = await buildExecFn("xcodebuild", buildCmdArgs, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
-      const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
-      const buildResult = parseBuildResult(buildOutput);
+        const buildExecFn = createBuildExec(state, exec);
+        const buildExec = await buildExecFn("xcodebuild", buildCmdArgs, {
+          signal: combinedSignal,
+          timeout: 600_000,
+          cwd: xcodeArgs.execCwd,
+        });
+        const buildOutput = `${buildExec.stdout}\n${buildExec.stderr}`;
+        const buildResult = parseBuildResult(buildOutput);
 
-      if (!buildResult.success) {
-        return {
-          content: [{ type: "text", text: `Build failed.\n\n${formatBuildResult(buildResult)}` }],
-          details: { success: false, build: buildResult },
-        };
-      }
+        if (!buildResult.success) {
+          return {
+            content: [{ type: "text", text: `Build failed.\n\n${formatBuildResult(buildResult)}` }],
+            details: { success: false, build: buildResult },
+          };
+        }
 
-      // ── Get app path ─────────────────────────────────────────────────
-      const settingsArgs = buildShowSettingsArgs({
-        project: xcodeArgs.projectFlag,
-        workspace: xcodeArgs.workspaceFlag,
-        scheme: resolved.scheme,
-        configuration: config,
-        destination,
-      });
+        // ── Get app path ─────────────────────────────────────────────────
+        const settingsArgs = buildShowSettingsArgs({
+          project: xcodeArgs.projectFlag,
+          workspace: xcodeArgs.workspaceFlag,
+          scheme: resolved.scheme,
+          configuration: config,
+          destination,
+        });
 
-      const settingsResult = await exec("xcodebuild", settingsArgs, { signal: combinedSignal, timeout: 30_000, cwd: xcodeArgs.execCwd });
-      const appPath = parseAppPath(settingsResult.stdout);
+        const settingsResult = await exec("xcodebuild", settingsArgs, {
+          signal: combinedSignal,
+          timeout: 30_000,
+          cwd: xcodeArgs.execCwd,
+        });
+        const appPath = parseAppPath(settingsResult.stdout);
 
-      if (!appPath) {
-        throw new Error("Could not determine app path from build settings.");
-      }
+        if (!appPath) {
+          throw new Error("Could not determine app path from build settings.");
+        }
 
-      // ── Profile ──────────────────────────────────────────────────────
-      const template = params.template ?? "Time Profiler";
-      const timeLimit = params.timeLimit ?? 30;
+        // ── Profile ──────────────────────────────────────────────────────
+        const template = params.template ?? "Time Profiler";
+        const timeLimit = params.timeLimit ?? 30;
 
-      const xctraceArgs = buildXctraceArgs({
-        template,
-        device: sim.udid,
-        appPath,
-        timeLimit,
-      });
-
-      onUpdate?.({
-        content: [{ type: "text", text: `Profiling with ${template} for ${timeLimit}s...` }],
-        details: undefined,
-      });
-
-      const profileResult = await exec("xcrun", xctraceArgs, { signal: combinedSignal, timeout: (timeLimit + 60) * 1000 });
-
-      // xctrace writes the .trace path to stderr
-      const traceMatch = profileResult.stderr.match(/Output file saved as (.+\.trace)/);
-      const tracePath = traceMatch?.[1]?.trim();
-
-      const success = profileResult.code === 0 && !!tracePath;
-
-      const lines: string[] = [];
-      if (success) {
-        lines.push(`✅ Profiling complete (${template}, ${timeLimit}s)`);
-        lines.push(`Trace file: ${tracePath}`);
-        lines.push(`Open with: open "${tracePath}"`);
-      } else {
-        lines.push(`❌ Profiling failed.`);
-        lines.push(profileResult.stderr);
-      }
-
-      return {
-        content: [{ type: "text", text: lines.join("\n") }],
-        details: {
-          success,
+        const xctraceArgs = buildXctraceArgs({
           template,
-          tracePath,
-          simulator: sim.name,
-        },
-      };
+          device: sim.udid,
+          appPath,
+          timeLimit,
+        });
+
+        onUpdate?.({
+          content: [{ type: "text", text: `Profiling with ${template} for ${timeLimit}s...` }],
+          details: undefined,
+        });
+
+        const profileResult = await exec("xcrun", xctraceArgs, {
+          signal: combinedSignal,
+          timeout: (timeLimit + 60) * 1000,
+        });
+
+        // xctrace writes the .trace path to stderr
+        const traceMatch = profileResult.stderr.match(/Output file saved as (.+\.trace)/);
+        const tracePath = traceMatch?.[1]?.trim();
+
+        const success = profileResult.code === 0 && !!tracePath;
+
+        const lines: string[] = [];
+        if (success) {
+          lines.push(`✅ Profiling complete (${template}, ${timeLimit}s)`);
+          lines.push(`Trace file: ${tracePath}`);
+          lines.push(`Open with: open "${tracePath}"`);
+        } else {
+          lines.push(`❌ Profiling failed.`);
+          lines.push(profileResult.stderr);
+        }
+
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
+          details: {
+            success,
+            template,
+            tracePath,
+            simulator: sim.name,
+          },
+        };
       } finally {
         clearOperation(state);
         stopSpinner(state);

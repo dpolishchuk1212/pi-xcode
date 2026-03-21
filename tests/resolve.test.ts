@@ -1,16 +1,15 @@
-import { describe, it, expect, vi } from "vitest";
-import type { ExecFn, ExecResult } from "../src/types.js";
-import { createState } from "../src/state.js";
+import { describe, expect, it, vi } from "vitest";
 import {
-  resolveProjectAndScheme,
-  getXcodebuildProjectArgs,
-  updateStatusBar,
   autoDetect,
-  pickBestDestination,
   formatDestinationLabel,
+  getXcodebuildProjectArgs,
+  pickBestDestination,
   refreshConfigurations,
+  resolveProjectAndScheme,
+  updateStatusBar,
 } from "../src/resolve.js";
-import type { Destination } from "../src/types.js";
+import { createState } from "../src/state.js";
+import type { Destination, ExecFn, ExecResult } from "../src/types.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -140,9 +139,9 @@ describe("resolveProjectAndScheme", () => {
       find: { stdout: "", code: 0 },
     });
 
-    await expect(
-      resolveProjectAndScheme(exec, "/empty", createState(), createMockUI()),
-    ).rejects.toThrow(/No Xcode project/);
+    await expect(resolveProjectAndScheme(exec, "/empty", createState(), createMockUI())).rejects.toThrow(
+      /No Xcode project/,
+    );
   });
 
   it("throws when user cancels project selection", async () => {
@@ -153,9 +152,7 @@ describe("resolveProjectAndScheme", () => {
     const ui = createMockUI();
     ui.select.mockResolvedValueOnce(undefined); // User cancelled
 
-    await expect(
-      resolveProjectAndScheme(exec, "/p", createState(), ui),
-    ).rejects.toThrow(/no project selected/i);
+    await expect(resolveProjectAndScheme(exec, "/p", createState(), ui)).rejects.toThrow(/no project selected/i);
   });
 
   it("handles Package.swift discovery", async () => {
@@ -394,9 +391,7 @@ describe("pickBestDestination", () => {
   });
 
   it("skips placeholders", () => {
-    const onlyPlaceholder: Destination[] = [
-      { platform: "iOS", id: "dvtdevice-placeholder", name: "Any iOS Device" },
-    ];
+    const onlyPlaceholder: Destination[] = [{ platform: "iOS", id: "dvtdevice-placeholder", name: "Any iOS Device" }];
     // Falls back to the placeholder since it's the only one
     const best = pickBestDestination(onlyPlaceholder);
     expect(best?.name).toBe("Any iOS Device");
@@ -460,21 +455,31 @@ describe("refreshConfigurations", () => {
 describe("formatDestinationLabel", () => {
   it("formats simulator destination", () => {
     const label = formatDestinationLabel({
-      platform: "iOS Simulator", id: "UUID", name: "iPhone 17", os: "18.0", arch: "arm64",
+      platform: "iOS Simulator",
+      id: "UUID",
+      name: "iPhone 17",
+      os: "18.0",
+      arch: "arm64",
     });
     expect(label).toBe("iPhone 17 (18.0)");
   });
 
   it("formats macOS destination with variant", () => {
     const label = formatDestinationLabel({
-      platform: "macOS", id: "UUID", name: "My Mac", arch: "arm64", variant: "Mac Catalyst",
+      platform: "macOS",
+      id: "UUID",
+      name: "My Mac",
+      arch: "arm64",
+      variant: "Mac Catalyst",
     });
     expect(label).toBe("My Mac — Mac Catalyst");
   });
 
   it("formats simple destination", () => {
     const label = formatDestinationLabel({
-      platform: "iOS", id: "UUID", name: "Any iOS Device",
+      platform: "iOS",
+      id: "UUID",
+      name: "Any iOS Device",
     });
     expect(label).toBe("Any iOS Device");
   });

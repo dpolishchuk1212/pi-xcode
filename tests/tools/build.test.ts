@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { ExecFn, ExecResult } from "../../src/types.js";
-import { registerBuildTool } from "../../src/tools/build.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createState } from "../../src/state.js";
+import { registerBuildTool } from "../../src/tools/build.js";
+import type { ExecFn, ExecResult } from "../../src/types.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -72,11 +72,17 @@ describe("xcode_build tool", () => {
     const tool = mockPi.getTool("xcode_build");
     const ctx = createMockCtx();
 
-    const result = await tool.execute("call-1", {
-      project: "App.xcodeproj",
-      scheme: "App",
-      configuration: "Debug",
-    }, undefined, vi.fn(), ctx);
+    const result = await tool.execute(
+      "call-1",
+      {
+        project: "App.xcodeproj",
+        scheme: "App",
+        configuration: "Debug",
+      },
+      undefined,
+      vi.fn(),
+      ctx,
+    );
 
     expect(result.content[0].text).toContain("BUILD SUCCEEDED");
     expect(result.details.success).toBe(true);
@@ -98,10 +104,16 @@ describe("xcode_build tool", () => {
     const tool = mockPi.getTool("xcode_build");
     const ctx = createMockCtx();
 
-    const result = await tool.execute("call-1", {
-      project: "App.xcodeproj",
-      scheme: "App",
-    }, undefined, vi.fn(), ctx);
+    const result = await tool.execute(
+      "call-1",
+      {
+        project: "App.xcodeproj",
+        scheme: "App",
+      },
+      undefined,
+      vi.fn(),
+      ctx,
+    );
 
     expect(result.content[0].text).toContain("BUILD FAILED");
     expect(result.details.success).toBe(false);
@@ -141,8 +153,6 @@ describe("xcode_build tool", () => {
     const tool = mockPi.getTool("xcode_build");
     const ctx = createMockCtx();
 
-    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(
-      /No Xcode project/,
-    );
+    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(/No Xcode project/);
   });
 });

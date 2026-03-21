@@ -1,17 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   buildBaseArgs,
   buildBuildArgs,
   buildCleanArgs,
-  buildTestArgs,
-  buildShowSettingsArgs,
   buildListArgs,
-  buildSimctlListArgs,
+  buildShowSettingsArgs,
   buildSimctlBootArgs,
   buildSimctlInstallArgs,
   buildSimctlLaunchArgs,
-  buildXctraceArgs,
+  buildSimctlListArgs,
   buildSimulatorDestination,
+  buildTestArgs,
+  buildXctraceArgs,
 } from "../src/commands.js";
 
 // ── Base args ──────────────────────────────────────────────────────────────
@@ -185,15 +185,7 @@ describe("buildSimctlLaunchArgs", () => {
 describe("buildXctraceArgs", () => {
   it("builds basic xctrace args", () => {
     const args = buildXctraceArgs({ template: "Time Profiler", appPath: "/path/App.app" });
-    expect(args).toEqual([
-      "xctrace",
-      "record",
-      "--template",
-      "Time Profiler",
-      "--launch",
-      "--",
-      "/path/App.app",
-    ]);
+    expect(args).toEqual(["xctrace", "record", "--template", "Time Profiler", "--launch", "--", "/path/App.app"]);
   });
 
   it("includes device, output, and time limit", () => {

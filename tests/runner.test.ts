@@ -1,16 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
-import type { Destination, ExecFn, ExecResult } from "../src/types.js";
+import { describe, expect, it, vi } from "vitest";
 import {
   classifyDestination,
-  terminateApp,
+  destinationTypeLabel,
   ensureDestinationReady,
   installApp,
+  isProcessAlive,
   launchApp,
   monitorAppLifecycle,
-  isProcessAlive,
   parsePidFromOutput,
-  destinationTypeLabel,
+  terminateApp,
 } from "../src/runner.js";
+import type { Destination, ExecFn, ExecResult } from "../src/types.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -106,11 +106,7 @@ describe("terminateApp", () => {
   it("uses simctl terminate for simulators", async () => {
     const exec = mockExec();
     await terminateApp(exec, simDest, "com.test.App");
-    expect(exec).toHaveBeenCalledWith(
-      "xcrun",
-      ["simctl", "terminate", "SIM-UUID", "com.test.App"],
-      expect.any(Object),
-    );
+    expect(exec).toHaveBeenCalledWith("xcrun", ["simctl", "terminate", "SIM-UUID", "com.test.App"], expect.any(Object));
   });
 
   it("uses osascript for macOS", async () => {
@@ -147,7 +143,7 @@ describe("ensureDestinationReady", () => {
   });
 
   it("ignores boot error (already booted)", async () => {
-    const exec = vi.fn(async (cmd: string, args: string[]) => {
+    const exec = vi.fn(async (_cmd: string, args: string[]) => {
       if (args.includes("boot")) {
         throw new Error("Already booted");
       }
@@ -209,11 +205,7 @@ describe("launchApp", () => {
     const result = await launchApp(exec, simDest, "com.test.App", "/path/to/App.app");
     expect(result.success).toBe(true);
     expect(result.pid).toBe(12345);
-    expect(exec).toHaveBeenCalledWith(
-      "xcrun",
-      ["simctl", "launch", "SIM-UUID", "com.test.App"],
-      expect.any(Object),
-    );
+    expect(exec).toHaveBeenCalledWith("xcrun", ["simctl", "launch", "SIM-UUID", "com.test.App"], expect.any(Object));
   });
 
   it("uses devicectl for physical devices", async () => {
@@ -261,7 +253,7 @@ describe("parsePidFromOutput", () => {
   });
 
   it("parses devicectl-style pid output", () => {
-    expect(parsePidFromOutput('pid: 54321')).toBe(54321);
+    expect(parsePidFromOutput("pid: 54321")).toBe(54321);
   });
 
   it("returns undefined for no PID", () => {
@@ -285,7 +277,9 @@ describe("isProcessAlive", () => {
   });
 
   it("returns false on exec error", async () => {
-    const exec = vi.fn(async () => { throw new Error("exec failed"); }) as unknown as ExecFn;
+    const exec = vi.fn(async () => {
+      throw new Error("exec failed");
+    }) as unknown as ExecFn;
     expect(await isProcessAlive(exec, 12345)).toBe(false);
   });
 });

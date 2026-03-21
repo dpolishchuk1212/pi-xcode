@@ -3,9 +3,9 @@
  */
 
 import nodePath from "node:path";
-import type { Destination, XcodeProject, XcodeScheme, ExecFn } from "./types.js";
-import type { XcodeState } from "./state.js";
 import { discoverConfigurations, discoverDestinations, discoverProjects, discoverSchemes } from "./discovery.js";
+import type { XcodeState } from "./state.js";
+import type { Destination, ExecFn, XcodeProject, XcodeScheme } from "./types.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -73,7 +73,7 @@ export async function resolveProjectAndScheme(
  * Discover projects recursively (depth 6) and select one interactively.
  * Also auto-selects scheme and destinations. Updates state and status bar.
  */
-export async function discoverAndSelect(
+async function discoverAndSelect(
   exec: ExecFn,
   cwd: string,
   state: XcodeState,
@@ -139,10 +139,7 @@ export async function refreshSchemes(
   state.activeScheme = pickBestScheme(schemes, projectBaseName(state.activeProject.path));
 
   // Refresh destinations and configurations in parallel
-  await Promise.all([
-    refreshDestinations(exec, state, ui),
-    refreshConfigurations(exec, state),
-  ]);
+  await Promise.all([refreshDestinations(exec, state, ui), refreshConfigurations(exec, state)]);
 }
 
 // ── Configuration helpers ──────────────────────────────────────────────────
@@ -151,10 +148,7 @@ export async function refreshSchemes(
  * Discover build configurations for the active project and auto-select.
  * Prefers "Debug", then first available.
  */
-export async function refreshConfigurations(
-  exec: ExecFn,
-  state: XcodeState,
-): Promise<void> {
+export async function refreshConfigurations(exec: ExecFn, state: XcodeState): Promise<void> {
   if (!state.activeProject) {
     state.availableConfigurations = [];
     state.activeConfiguration = undefined;
@@ -178,7 +172,7 @@ export async function refreshConfigurations(
 export async function refreshDestinations(
   exec: ExecFn,
   state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus" | "theme">,
+  _ui: Pick<ResolveUI, "setStatus" | "theme">,
 ): Promise<void> {
   if (!state.activeProject || !state.activeScheme) {
     state.availableDestinations = [];
@@ -205,7 +199,7 @@ export async function refreshDestinations(
  *
  * @param projectName - Optional project/workspace base name (e.g. "Letyco") for tiebreaking
  */
-export function pickBestScheme(schemes: XcodeScheme[], projectName?: string): XcodeScheme | undefined {
+function pickBestScheme(schemes: XcodeScheme[], projectName?: string): XcodeScheme | undefined {
   if (schemes.length === 0) return undefined;
 
   // 1. Prefer app schemes (identified from .xcscheme file)
@@ -247,7 +241,7 @@ export function pickBestScheme(schemes: XcodeScheme[], projectName?: string): Xc
  *      "path/to/MyApp.xcodeproj" → "MyApp"
  *      "path/to/Package.swift" → "Package"
  */
-export function projectBaseName(projectPath: string): string {
+function projectBaseName(projectPath: string): string {
   const base = nodePath.basename(projectPath);
   // Strip .xcworkspace, .xcodeproj, .swift
   return base.replace(/\.(xcworkspace|xcodeproj|swift)$/, "");
@@ -302,11 +296,7 @@ let spinnerIndex = 0;
  * Start an animated spinner in the status bar. Updates every 100ms.
  * Returns a cleanup function to stop the spinner.
  */
-export function startSpinner(
-  cwd: string,
-  state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus" | "theme">,
-): void {
+export function startSpinner(cwd: string, state: XcodeState, ui: Pick<ResolveUI, "setStatus" | "theme">): void {
   // Stop any existing spinner
   stopSpinner(state);
 
@@ -339,11 +329,7 @@ export function stopSpinner(state: XcodeState): void {
  * Update the unified status bar: `project · scheme · configuration · destination`
  * Styled to match the native pi footer (dim text).
  */
-export function updateStatusBar(
-  cwd: string,
-  state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus" | "theme">,
-): void {
+export function updateStatusBar(cwd: string, state: XcodeState, ui: Pick<ResolveUI, "setStatus" | "theme">): void {
   const { theme } = ui;
   const parts: string[] = [];
 
@@ -384,9 +370,8 @@ export function updateStatusBar(
       if (state.appStatus === "testing") {
         const total = state.passedTests + state.failedTests;
         if (total > 0) {
-          progress = state.failedTests > 0
-            ? ` [${state.passedTests}✓ ${state.failedTests}✗]`
-            : ` [${state.passedTests}✓]`;
+          progress =
+            state.failedTests > 0 ? ` [${state.passedTests}✓ ${state.failedTests}✗]` : ` [${state.passedTests}✓]`;
         }
       } else if (state.completedTasks > 0) {
         progress = ` [${state.completedTasks}]`;
@@ -396,7 +381,8 @@ export function updateStatusBar(
     }
 
     // Spinner frame (for non-idle, non-running states)
-    const spinnerFrame = state.appStatus !== "running" ? SPINNER_FRAMES[spinnerIndex % SPINNER_FRAMES.length] + " " : "▶ ";
+    const spinnerFrame =
+      state.appStatus !== "running" ? `${SPINNER_FRAMES[spinnerIndex % SPINNER_FRAMES.length]} ` : "▶ ";
 
     parts.push(theme.fg(config.color, `${spinnerFrame}${config.label}${elapsed}`));
   }

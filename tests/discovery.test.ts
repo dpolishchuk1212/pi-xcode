@@ -1,8 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
-import type { ExecFn, ExecResult } from "../src/types.js";
-import { discoverProjects, discoverSchemes, discoverConfigurations, discoverSimulators, discover } from "../src/discovery.js";
-import { autoSelect, findSimulator } from "../src/discovery.js";
-import type { DiscoveryResult, Simulator } from "../src/types.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  autoSelect,
+  discover,
+  discoverConfigurations,
+  discoverProjects,
+  discoverSchemes,
+  discoverSimulators,
+  findSimulator,
+} from "../src/discovery.js";
+import type { DiscoveryResult, ExecFn, ExecResult, Simulator } from "../src/types.js";
 
 // ── Helper: create a mock exec ─────────────────────────────────────────────
 
@@ -147,7 +153,7 @@ describe("discoverConfigurations", () => {
   });
 
   it("uses cwd for Package.swift", async () => {
-    const exec = vi.fn(async (_cmd: string, args: string[], options?: { cwd?: string }) => {
+    const exec = vi.fn(async (_cmd: string, _args: string[], options?: { cwd?: string }) => {
       expect(options?.cwd).toBe("/project");
       return {
         stdout: "    Build Configurations:\n        Debug\n        Release\n",

@@ -1,16 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  parseAppPath,
   parseBuildIssues,
-  parseBuildSuccess,
   parseBuildResult,
+  parseBuildSuccess,
+  parseBundleId,
+  parseConfigurationList,
+  parseDestinations,
+  parseSchemeList,
+  parseSimulatorList,
   parseTestCases,
   parseTestResult,
-  parseSchemeList,
-  parseConfigurationList,
-  parseSimulatorList,
-  parseBundleId,
-  parseAppPath,
-  parseDestinations,
 } from "../src/parsers.js";
 
 // ── Build issue parsing ────────────────────────────────────────────────────

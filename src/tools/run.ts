@@ -1,20 +1,35 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { Destination, ExecFn } from "../types.js";
-import type { XcodeState } from "../state.js";
-import { startOperation, clearOperation } from "../state.js";
-import { createBuildExec } from "../streaming.js";
 import {
   buildBuildArgs,
   buildDestinationString,
   buildShowSettingsArgs,
   buildSimulatorDestination,
 } from "../commands.js";
-import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
 import { discoverSimulators, findSimulator } from "../discovery.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel, updateStatusBar, startSpinner, stopSpinner } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
-import { classifyDestination, terminateApp, ensureDestinationReady, installApp, launchApp, monitorAppLifecycle, destinationTypeLabel } from "../runner.js";
+import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
+import {
+  formatDestinationLabel,
+  getXcodebuildProjectArgs,
+  resolveProjectAndScheme,
+  startSpinner,
+  stopSpinner,
+  updateStatusBar,
+} from "../resolve.js";
+import {
+  classifyDestination,
+  destinationTypeLabel,
+  ensureDestinationReady,
+  installApp,
+  launchApp,
+  monitorAppLifecycle,
+  terminateApp,
+} from "../runner.js";
+import type { XcodeState } from "../state.js";
+import { clearOperation, startOperation } from "../state.js";
+import { createBuildExec } from "../streaming.js";
+import type { Destination, ExecFn } from "../types.js";
 
 export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
@@ -34,7 +49,9 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
       scheme: Type.Optional(Type.String({ description: "Build scheme (auto-discovered if omitted)" })),
       configuration: Type.Optional(Type.String({ description: "Debug or Release (default: Debug)" })),
-      simulator: Type.Optional(Type.String({ description: "Simulator name or UDID (shorthand for simulator destination)" })),
+      simulator: Type.Optional(
+        Type.String({ description: "Simulator name or UDID (shorthand for simulator destination)" }),
+      ),
       skipBuild: Type.Optional(Type.Boolean({ description: "Skip the build step (default: false)" })),
     }),
 
@@ -99,11 +116,20 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
           destination: destinationStr,
         });
 
-        onUpdate?.({ content: [{ type: "text", text: `Building ${resolved.scheme ?? "project"} (${configuration}) for ${destLabel}...` }], details: undefined });
+        onUpdate?.({
+          content: [
+            { type: "text", text: `Building ${resolved.scheme ?? "project"} (${configuration}) for ${destLabel}...` },
+          ],
+          details: undefined,
+        });
 
         const buildExecFn = createBuildExec(state, exec);
-        const buildExec = await buildExecFn("xcodebuild", buildCmdArgs, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
-        const buildOutput = buildExec.stdout + "\n" + buildExec.stderr;
+        const buildExec = await buildExecFn("xcodebuild", buildCmdArgs, {
+          signal: combinedSignal,
+          timeout: 600_000,
+          cwd: xcodeArgs.execCwd,
+        });
+        const buildOutput = `${buildExec.stdout}\n${buildExec.stderr}`;
         const buildResult = parseBuildResult(buildOutput);
 
         if (!buildResult.success) {
@@ -129,7 +155,11 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
         destination: destinationStr,
       });
 
-      const settingsResult = await exec("xcodebuild", settingsArgs, { signal: combinedSignal, timeout: 30_000, cwd: xcodeArgs.execCwd });
+      const settingsResult = await exec("xcodebuild", settingsArgs, {
+        signal: combinedSignal,
+        timeout: 30_000,
+        cwd: xcodeArgs.execCwd,
+      });
       const settingsOutput = settingsResult.stdout;
       const bundleId = parseBundleId(settingsOutput);
       const appPath = parseAppPath(settingsOutput);

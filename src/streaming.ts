@@ -4,8 +4,8 @@
  */
 
 import { spawn } from "node:child_process";
-import type { ExecFn, ExecResult } from "./types.js";
 import type { XcodeState } from "./state.js";
+import type { ExecFn, ExecResult } from "./types.js";
 
 /**
  * Create a promise that resolves when an AbortSignal fires.
@@ -18,11 +18,9 @@ function onAbort(signal: AbortSignal): Promise<ExecResult> {
       resolve({ stdout: "", stderr: "Aborted", code: 1, killed: true });
       return;
     }
-    signal.addEventListener(
-      "abort",
-      () => resolve({ stdout: "", stderr: "Aborted", code: 1, killed: true }),
-      { once: true },
-    );
+    signal.addEventListener("abort", () => resolve({ stdout: "", stderr: "Aborted", code: 1, killed: true }), {
+      once: true,
+    });
   });
 }
 
@@ -30,12 +28,13 @@ function onAbort(signal: AbortSignal): Promise<ExecResult> {
  * Regex matching xcodebuild task lines. Each match = one completed build step.
  * These lines start at column 0 with a known verb.
  */
-const TASK_LINE_RE = /^(CompileSwift|CompileC|SwiftCompile|Ld|Link|MergeSwiftModule|PhaseScriptExecution|CopySwiftLibs|ProcessInfoPlistFile|CompileAssetCatalog|CompileStoryboard|CodeSign|Validate|CpResource|CpHeader|Copy|ProcessProductPackaging|ProcessProductPackagingDER|GenerateAssetSymbols|WriteAuxiliaryFile|RegisterExecutionPolicyException|CreateUniversalBinary|SwiftDriver|SwiftEmitModule|SwiftMergeGeneratedHeaders|EmitSwiftModule)\b/;
+const TASK_LINE_RE =
+  /^(CompileSwift|CompileC|SwiftCompile|Ld|Link|MergeSwiftModule|PhaseScriptExecution|CopySwiftLibs|ProcessInfoPlistFile|CompileAssetCatalog|CompileStoryboard|CodeSign|Validate|CpResource|CpHeader|Copy|ProcessProductPackaging|ProcessProductPackagingDER|GenerateAssetSymbols|WriteAuxiliaryFile|RegisterExecutionPolicyException|CreateUniversalBinary|SwiftDriver|SwiftEmitModule|SwiftMergeGeneratedHeaders|EmitSwiftModule)\b/;
 
 /**
  * Count completed build tasks from xcodebuild output.
  */
-export function countTasks(output: string): number {
+function countTasks(output: string): number {
   let count = 0;
   for (const line of output.split("\n")) {
     if (TASK_LINE_RE.test(line)) count++;
@@ -61,7 +60,7 @@ export function createBuildExec(state: XcodeState, execFn?: ExecFn) {
     if (execFn) {
       const execPromise = execFn(command, args, options).then(
         (result) => {
-          const combined = result.stdout + "\n" + result.stderr;
+          const combined = `${result.stdout}\n${result.stderr}`;
           state.completedTasks = countTasks(combined);
           return result;
         },
@@ -144,13 +143,17 @@ export function createBuildExec(state: XcodeState, execFn?: ExecFn) {
           settle({ stdout, stderr, code: 1, killed: true });
           return;
         }
-        options.signal.addEventListener("abort", () => {
-          killed = true;
-          proc.kill("SIGKILL");
-          // Settle immediately — don't wait for `close` event which may
-          // hang if orphaned child processes (swift-frontend, clang) keep pipes open.
-          settle({ stdout, stderr, code: 1, killed: true });
-        }, { once: true });
+        options.signal.addEventListener(
+          "abort",
+          () => {
+            killed = true;
+            proc.kill("SIGKILL");
+            // Settle immediately — don't wait for `close` event which may
+            // hang if orphaned child processes (swift-frontend, clang) keep pipes open.
+            settle({ stdout, stderr, code: 1, killed: true });
+          },
+          { once: true },
+        );
       }
 
       // Handle timeout
@@ -179,7 +182,7 @@ const TEST_FAILED_RE = /^Test case '.+' failed/;
 /**
  * Count passed/failed tests from xcodebuild output.
  */
-export function countTests(output: string): { passed: number; failed: number } {
+function countTests(output: string): { passed: number; failed: number } {
   let passed = 0;
   let failed = 0;
   for (const line of output.split("\n")) {
@@ -208,7 +211,7 @@ export function createTestExec(state: XcodeState, execFn?: ExecFn) {
     if (execFn) {
       const execPromise = execFn(command, args, options).then(
         (result) => {
-          const combined = result.stdout + "\n" + result.stderr;
+          const combined = `${result.stdout}\n${result.stderr}`;
           const counts = countTests(combined);
           state.passedTests = counts.passed;
           state.failedTests = counts.failed;
@@ -284,11 +287,15 @@ export function createTestExec(state: XcodeState, execFn?: ExecFn) {
           settle({ stdout, stderr, code: 1, killed: true });
           return;
         }
-        options.signal.addEventListener("abort", () => {
-          killed = true;
-          proc.kill("SIGKILL");
-          settle({ stdout, stderr, code: 1, killed: true });
-        }, { once: true });
+        options.signal.addEventListener(
+          "abort",
+          () => {
+            killed = true;
+            proc.kill("SIGKILL");
+            settle({ stdout, stderr, code: 1, killed: true });
+          },
+          { once: true },
+        );
       }
 
       if (options?.timeout) {

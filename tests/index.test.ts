@@ -1,4 +1,4 @@
-import { describe, test, expect } from "vitest";
+import { describe, test } from "vitest";
 
 describe("pi-xcode extension", () => {
   test.todo("registers xcode_build tool");

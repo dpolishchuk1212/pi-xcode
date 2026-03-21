@@ -53,22 +53,19 @@ export function parseBuildResult(output: string): BuildResult {
  *   Test Case '-[MyTests testBar]' failed (0.012 seconds).
  *   Test Case 'MyTests.testFoo' passed (0.003 seconds).
  */
-const TEST_CASE_RE =
-  /Test Case '(?:-\[(\S+)\s+(\S+)\]|(\S+)\.(\S+))' (passed|failed) \((\d+\.\d+) seconds\)/;
+const TEST_CASE_RE = /Test Case '(?:-\[(\S+)\s+(\S+)\]|(\S+)\.(\S+))' (passed|failed) \((\d+\.\d+) seconds\)/;
 
 /**
  * Matches the summary line:
  *   Executed 5 tests, with 1 failure (0 unexpected) in 0.123 (0.456) seconds
  */
-const TEST_SUMMARY_RE =
-  /Executed (\d+) tests?, with (\d+) failures? \(\d+ unexpected\) in (\d+\.\d+)/;
+const TEST_SUMMARY_RE = /Executed (\d+) tests?, with (\d+) failures? \(\d+ unexpected\) in (\d+\.\d+)/;
 
 /**
  * Captures failure reason from lines like:
  *   /path/file.swift:42: error: -[Tests testFoo] : XCTAssertEqual failed: ("1") is not equal to ("2")
  */
-const TEST_FAILURE_RE =
-  /^.+:\d+: error: -\[(\S+)\s+(\S+)\]\s*:\s*(.+)$/;
+const TEST_FAILURE_RE = /^.+:\d+: error: -\[(\S+)\s+(\S+)\]\s*:\s*(.+)$/;
 
 export function parseTestCases(output: string): TestCase[] {
   const cases: TestCase[] = [];

@@ -180,11 +180,7 @@ export function buildSimulatorDestination(simulator: string): string {
 /**
  * `-showdestinations` arguments.
  */
-export function buildShowDestinationsArgs(opts: {
-  project?: string;
-  workspace?: string;
-  scheme?: string;
-}): string[] {
+export function buildShowDestinationsArgs(opts: { project?: string; workspace?: string; scheme?: string }): string[] {
   const args: string[] = [];
   if (opts.workspace) args.push("-workspace", opts.workspace);
   else if (opts.project) args.push("-project", opts.project);

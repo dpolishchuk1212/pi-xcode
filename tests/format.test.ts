@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 import { formatBuildResult, formatTestResult } from "../src/format.js";
 import type { BuildResult, TestResult } from "../src/types.js";
 

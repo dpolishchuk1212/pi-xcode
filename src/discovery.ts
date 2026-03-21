@@ -2,11 +2,19 @@
  * Auto-discover Xcode projects, workspaces, schemes, and simulators.
  */
 
-import nodePath from "node:path";
 import { readFile } from "node:fs/promises";
-import type { Destination, DiscoveryResult, ExecFn, SchemeProductType, Simulator, XcodeProject, XcodeScheme } from "./types.js";
+import nodePath from "node:path";
 import { buildListArgs, buildShowDestinationsArgs, buildSimctlListArgs } from "./commands.js";
 import { parseConfigurationList, parseDestinations, parseSchemeList, parseSimulatorList } from "./parsers.js";
+import type {
+  Destination,
+  DiscoveryResult,
+  ExecFn,
+  SchemeProductType,
+  Simulator,
+  XcodeProject,
+  XcodeScheme,
+} from "./types.js";
 
 /**
  * Find .xcodeproj, .xcworkspace, and Package.swift files in `cwd`.
@@ -93,7 +101,7 @@ export async function discoverSchemes(exec: ExecFn, projectPath: string): Promis
 
   const result = await exec("xcodebuild", args, { timeout: 15000, cwd: execCwd });
 
-  const combined = result.stdout + "\n" + result.stderr;
+  const combined = `${result.stdout}\n${result.stderr}`;
   const schemes = parseSchemeList(combined, projectPath);
 
   // Enrich schemes with product type from .xcscheme files
@@ -112,7 +120,7 @@ export async function discoverSchemes(exec: ExecFn, projectPath: string): Promis
  *   - `.appex` → "extension"
  *   - anything else → "other"
  */
-export function inferProductType(buildableName: string): SchemeProductType {
+function inferProductType(buildableName: string): SchemeProductType {
   if (buildableName.endsWith(".app")) return "app";
   if (buildableName.endsWith(".framework")) return "framework";
   if (buildableName.endsWith(".xctest")) return "test";
@@ -125,7 +133,7 @@ export function inferProductType(buildableName: string): SchemeProductType {
  * BuildActionEntry. Returns the inferred product type, or undefined if
  * the file can't be read or parsed.
  */
-export async function readSchemeProductType(schemePath: string): Promise<SchemeProductType | undefined> {
+async function readSchemeProductType(schemePath: string): Promise<SchemeProductType | undefined> {
   try {
     const xml = await readFile(schemePath, "utf-8");
 
@@ -217,7 +225,7 @@ export async function discoverConfigurations(exec: ExecFn, projectPath: string):
 
   if (projectPath.endsWith("Package.swift")) {
     const result = await exec("xcodebuild", ["-list"], { timeout: 15000, cwd: nodePath.dirname(projectPath) });
-    return parseConfigurationList(result.stdout + "\n" + result.stderr);
+    return parseConfigurationList(`${result.stdout}\n${result.stderr}`);
   }
 
   // Workspaces don't list build configurations — find the sibling .xcodeproj
@@ -231,7 +239,9 @@ export async function discoverConfigurations(exec: ExecFn, projectPath: string):
       listPath = siblingProj;
     } catch {
       // No sibling project — try to find any .xcodeproj in the same directory
-      const findResult = await exec("find", [dir, "-maxdepth", "1", "-name", "*.xcodeproj", "-type", "d"], { timeout: 5000 });
+      const findResult = await exec("find", [dir, "-maxdepth", "1", "-name", "*.xcodeproj", "-type", "d"], {
+        timeout: 5000,
+      });
       const found = findResult.stdout.trim().split("\n").filter(Boolean);
       if (found.length > 0) {
         listPath = found[0];
@@ -243,7 +253,7 @@ export async function discoverConfigurations(exec: ExecFn, projectPath: string):
   const args = buildListArgs(listPath);
   const result = await exec("xcodebuild", args, { timeout: 15000, cwd: execCwd });
 
-  const configs = parseConfigurationList(result.stdout + "\n" + result.stderr);
+  const configs = parseConfigurationList(`${result.stdout}\n${result.stderr}`);
 
   // Fallback: if no configs found, return standard defaults
   if (configs.length === 0) {
@@ -287,7 +297,7 @@ export async function discoverDestinations(
   const result = await exec("xcodebuild", args, { timeout: 30_000, cwd: execCwd });
 
   // Parse regardless of exit code — xcodebuild may print destinations even on non-zero exit
-  const combined = result.stdout + "\n" + result.stderr;
+  const combined = `${result.stdout}\n${result.stderr}`;
   return parseDestinations(combined);
 }
 

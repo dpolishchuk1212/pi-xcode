@@ -1,13 +1,19 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { ExecFn } from "../types.js";
-import type { XcodeState } from "../state.js";
-import { startOperation, clearOperation } from "../state.js";
-import { createBuildExec } from "../streaming.js";
 import { buildBuildArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
-import { parseBuildResult } from "../parsers.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs, formatDestinationLabel, startSpinner, stopSpinner } from "../resolve.js";
 import { formatBuildResult } from "../format.js";
+import { parseBuildResult } from "../parsers.js";
+import {
+  formatDestinationLabel,
+  getXcodebuildProjectArgs,
+  resolveProjectAndScheme,
+  startSpinner,
+  stopSpinner,
+} from "../resolve.js";
+import type { XcodeState } from "../state.js";
+import { clearOperation, startOperation } from "../state.js";
+import { createBuildExec } from "../streaming.js";
+import type { ExecFn } from "../types.js";
 
 export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
@@ -69,13 +75,21 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       const destLabel = destinationLabel ? ` for ${destinationLabel}` : "";
       onUpdate?.({ content: [{ type: "text", text: `Building${destLabel}...` }], details: undefined });
 
-      const combinedSignal = startOperation(state, `Build ${resolved.scheme ?? "project"} (${configuration})${destLabel}`, signal);
+      const combinedSignal = startOperation(
+        state,
+        `Build ${resolved.scheme ?? "project"} (${configuration})${destLabel}`,
+        signal,
+      );
       startSpinner(cwd, state, ctx.ui);
 
       try {
         const buildExecFn = createBuildExec(state, exec);
-        const result = await buildExecFn("xcodebuild", args, { signal: combinedSignal, timeout: 600_000, cwd: xcodeArgs.execCwd });
-        const combined = result.stdout + "\n" + result.stderr;
+        const result = await buildExecFn("xcodebuild", args, {
+          signal: combinedSignal,
+          timeout: 600_000,
+          cwd: xcodeArgs.execCwd,
+        });
+        const combined = `${result.stdout}\n${result.stderr}`;
         const buildResult = parseBuildResult(combined);
 
         const summary = formatBuildResult(buildResult);

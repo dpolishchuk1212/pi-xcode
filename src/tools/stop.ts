@@ -1,9 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { ExecFn } from "../types.js";
+import { type ResolveUI, stopSpinner, updateStatusBar } from "../resolve.js";
+import { classifyDestination } from "../runner.js";
 import type { XcodeState } from "../state.js";
-import { updateStatusBar, stopSpinner, type ResolveUI } from "../resolve.js";
-import { terminateApp, classifyDestination } from "../runner.js";
+import type { ExecFn } from "../types.js";
 
 /**
  * Force-kill any running xcodebuild processes. Uses SIGKILL (-9) for immediate

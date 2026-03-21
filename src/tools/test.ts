@@ -1,13 +1,19 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { ExecFn } from "../types.js";
-import type { XcodeState } from "../state.js";
-import { startOperation, clearOperation } from "../state.js";
-import { createTestExec } from "../streaming.js";
-import { buildTestArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
-import { parseTestResult } from "../parsers.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs, updateStatusBar, startSpinner, stopSpinner } from "../resolve.js";
+import { buildDestinationString, buildSimulatorDestination, buildTestArgs } from "../commands.js";
 import { formatTestResult } from "../format.js";
+import { parseTestResult } from "../parsers.js";
+import {
+  getXcodebuildProjectArgs,
+  resolveProjectAndScheme,
+  startSpinner,
+  stopSpinner,
+  updateStatusBar,
+} from "../resolve.js";
+import type { XcodeState } from "../state.js";
+import { clearOperation, startOperation } from "../state.js";
+import { createTestExec } from "../streaming.js";
+import type { ExecFn, TestResult } from "../types.js";
 
 export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
@@ -68,18 +74,25 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
         skipTesting: params.skipTesting,
       });
 
-      onUpdate?.({ content: [{ type: "text", text: `Running tests: xcodebuild ${args.join(" ")}` }], details: undefined });
+      onUpdate?.({
+        content: [{ type: "text", text: `Running tests: xcodebuild ${args.join(" ")}` }],
+        details: undefined,
+      });
 
       state.appStatus = "testing";
       startSpinner(cwd, state, ctx.ui);
 
       const combinedSignal = startOperation(state, `Test ${resolved.scheme ?? "project"}`, signal);
 
-      let testResult;
+      let testResult: TestResult | undefined;
       try {
         const testExecFn = createTestExec(state, exec);
-        const result = await testExecFn("xcodebuild", args, { signal: combinedSignal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
-        const combined = result.stdout + "\n" + result.stderr;
+        const result = await testExecFn("xcodebuild", args, {
+          signal: combinedSignal,
+          timeout: 1_200_000,
+          cwd: xcodeArgs.execCwd,
+        });
+        const combined = `${result.stdout}\n${result.stderr}`;
         testResult = parseTestResult(combined);
       } finally {
         clearOperation(state);

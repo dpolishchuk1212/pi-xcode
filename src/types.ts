@@ -87,5 +87,3 @@ export interface TestResult {
   cases: TestCase[];
   rawOutput: string;
 }
-
-

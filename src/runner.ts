@@ -29,7 +29,7 @@ export async function terminateApp(
   exec: ExecFn,
   dest: Destination,
   bundleId: string,
-  appPath?: string,
+  _appPath?: string,
 ): Promise<void> {
   const type = classifyDestination(dest);
 
@@ -100,11 +100,10 @@ export async function installApp(
       break;
 
     case "device":
-      await exec(
-        "xcrun",
-        ["devicectl", "device", "install", "app", "--device", dest.id, appPath],
-        { signal, timeout: 120_000 },
-      );
+      await exec("xcrun", ["devicectl", "device", "install", "app", "--device", dest.id, appPath], {
+        signal,
+        timeout: 120_000,
+      });
       break;
 
     case "mac":
@@ -159,7 +158,7 @@ export async function launchApp(
           return { success: false, error: result.stderr };
         }
         // devicectl may print PID in output — best effort parse
-        const pid = parsePidFromOutput(result.stdout + "\n" + result.stderr);
+        const pid = parsePidFromOutput(`${result.stdout}\n${result.stderr}`);
         return { success: true, pid };
       }
 
@@ -186,12 +185,7 @@ export async function launchApp(
  * Calls `onExit` when the process is no longer running.
  * Returns a cleanup function to stop monitoring.
  */
-export function monitorAppLifecycle(
-  exec: ExecFn,
-  pid: number,
-  onExit: () => void,
-  intervalMs = 1000,
-): () => void {
+export function monitorAppLifecycle(exec: ExecFn, pid: number, onExit: () => void, intervalMs = 1000): () => void {
   let stopped = false;
 
   const check = async () => {
@@ -238,14 +232,14 @@ export function parsePidFromOutput(output: string): number | undefined {
   const colonMatch = output.match(/:\s*(\d+)\s*$/m);
   if (colonMatch) {
     const pid = parseInt(colonMatch[1], 10);
-    if (!isNaN(pid) && pid > 0) return pid;
+    if (!Number.isNaN(pid) && pid > 0) return pid;
   }
 
   // devicectl or other format: "pid" = 12345 or "PID: 12345"
   const pidMatch = output.match(/pid["\s:=]+(\d+)/i);
   if (pidMatch) {
     const pid = parseInt(pidMatch[1], 10);
-    if (!isNaN(pid) && pid > 0) return pid;
+    if (!Number.isNaN(pid) && pid > 0) return pid;
   }
 
   return undefined;
@@ -262,7 +256,7 @@ async function findProcessPid(exec: ExecFn, processName: string): Promise<number
     const result = await exec("pgrep", ["-xn", processName], { timeout: 5_000 });
     if (result.code !== 0) return undefined;
     const pid = parseInt(result.stdout.trim(), 10);
-    return !isNaN(pid) && pid > 0 ? pid : undefined;
+    return !Number.isNaN(pid) && pid > 0 ? pid : undefined;
   } catch {
     return undefined;
   }

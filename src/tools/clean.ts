@@ -1,9 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import type { ExecFn } from "../types.js";
-import type { XcodeState } from "../state.js";
 import { buildCleanArgs } from "../commands.js";
-import { resolveProjectAndScheme, getXcodebuildProjectArgs } from "../resolve.js";
+import { getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
+import type { XcodeState } from "../state.js";
+import type { ExecFn } from "../types.js";
 
 export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
