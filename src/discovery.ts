@@ -212,20 +212,45 @@ async function collectSchemeDirs(projectPath: string): Promise<string[]> {
  * Parses "Build Configurations:" section from `xcodebuild -list`.
  */
 export async function discoverConfigurations(exec: ExecFn, projectPath: string): Promise<string[]> {
-  let args: string[];
+  let listPath = projectPath;
   let execCwd: string | undefined;
 
   if (projectPath.endsWith("Package.swift")) {
-    args = ["-list"];
-    execCwd = nodePath.dirname(projectPath);
-  } else {
-    args = buildListArgs(projectPath);
+    const result = await exec("xcodebuild", ["-list"], { timeout: 15000, cwd: nodePath.dirname(projectPath) });
+    return parseConfigurationList(result.stdout + "\n" + result.stderr);
   }
 
+  // Workspaces don't list build configurations — find the sibling .xcodeproj
+  if (projectPath.endsWith(".xcworkspace")) {
+    const dir = nodePath.dirname(projectPath);
+    const baseName = nodePath.basename(projectPath, ".xcworkspace");
+    const siblingProj = nodePath.join(dir, `${baseName}.xcodeproj`);
+
+    try {
+      await exec("test", ["-d", siblingProj], { timeout: 3000 });
+      listPath = siblingProj;
+    } catch {
+      // No sibling project — try to find any .xcodeproj in the same directory
+      const findResult = await exec("find", [dir, "-maxdepth", "1", "-name", "*.xcodeproj", "-type", "d"], { timeout: 5000 });
+      const found = findResult.stdout.trim().split("\n").filter(Boolean);
+      if (found.length > 0) {
+        listPath = found[0];
+      }
+      // If still a workspace, fall through — will likely return empty configs
+    }
+  }
+
+  const args = buildListArgs(listPath);
   const result = await exec("xcodebuild", args, { timeout: 15000, cwd: execCwd });
 
-  const combined = result.stdout + "\n" + result.stderr;
-  return parseConfigurationList(combined);
+  const configs = parseConfigurationList(result.stdout + "\n" + result.stderr);
+
+  // Fallback: if no configs found, return standard defaults
+  if (configs.length === 0) {
+    return ["Debug", "Release"];
+  }
+
+  return configs;
 }
 
 /**
