@@ -1,6 +1,6 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { DynamicBorder } from "@mariozechner/pi-coding-agent";
-import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, getSelectListTheme } from "@mariozechner/pi-coding-agent";
+import { fuzzyFilter, Input, Key, matchesKey, type SelectItem, SelectList, truncateToWidth } from "@mariozechner/pi-tui";
 import nodePath from "node:path";
 import type { ExecFn, SchemeProductType } from "./types.js";
 import { createState, startOperation, clearOperation } from "./state.js";
@@ -33,6 +33,78 @@ function createExec(pi: ExtensionAPI): ExecFn {
   return (command, args, options) => pi.exec(command, args, options);
 }
 
+// ── Reusable select dialog with DynamicBorder, scrolling, and fuzzy search ──
+
+const MAX_VISIBLE = 20;
+
+async function showFilterableSelect(
+  ctx: ExtensionContext,
+  title: string,
+  items: SelectItem[],
+): Promise<string | null> {
+  return ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+    const topBorder = new DynamicBorder((s: string) => theme.fg("accent", s));
+    const bottomBorder = new DynamicBorder((s: string) => theme.fg("accent", s));
+    const selectTheme = getSelectListTheme();
+
+    const searchInput = new Input();
+    let filteredItems = items;
+
+    function makeSelectList(listItems: SelectItem[]) {
+      const sl = new SelectList(listItems, Math.min(listItems.length, MAX_VISIBLE), selectTheme);
+      sl.onSelect = (item) => done(item.value);
+      sl.onCancel = () => done(null);
+      return sl;
+    }
+
+    let currentSelectList = makeSelectList(filteredItems);
+
+    function applyFilter() {
+      const query = searchInput.getValue();
+      filteredItems = query
+        ? fuzzyFilter(items, query, (item) => item.label)
+        : items;
+      currentSelectList = makeSelectList(filteredItems);
+    }
+
+    return {
+      render: (w: number) => {
+        const lines: string[] = [];
+        lines.push(...topBorder.render(w));
+        lines.push(truncateToWidth(` ${theme.fg("accent", theme.bold(title))} ${theme.fg("muted", `(${filteredItems.length})`)}`, w));
+        lines.push(...searchInput.render(w));
+        lines.push("");
+        lines.push(...currentSelectList.render(w));
+        lines.push(truncateToWidth(theme.fg("dim", " ↑↓ navigate • type to filter • enter select • esc cancel"), w));
+        lines.push(...bottomBorder.render(w));
+        return lines;
+      },
+      invalidate: () => {
+        topBorder.invalidate();
+        bottomBorder.invalidate();
+        searchInput.invalidate();
+        currentSelectList.invalidate();
+      },
+      handleInput: (data: string) => {
+        if (matchesKey(data, Key.up) || matchesKey(data, Key.down) || matchesKey(data, Key.enter)) {
+          currentSelectList.handleInput(data);
+        } else if (matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
+          if (searchInput.getValue()) {
+            searchInput.setValue("");
+            applyFilter();
+          } else {
+            done(null);
+          }
+        } else {
+          searchInput.handleInput(data);
+          applyFilter();
+        }
+        tui.requestRender();
+      },
+    };
+  });
+}
+
 export default function (pi: ExtensionAPI) {
   const exec = createExec(pi);
   const state = createState();
@@ -50,23 +122,20 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const theme = ctx.ui.theme;
-
-      const formatProject = (p: (typeof projects)[number]) => {
+      const items: SelectItem[] = projects.map((p) => {
         const relativePath = nodePath.relative(cwd, p.path) || p.path;
-        let label = relativePath;
-        if (state.activeProject?.path === p.path) {
-          label += theme.fg("accent", " ★ active");
-        }
-        return label;
-      };
+        const isActive = state.activeProject?.path === p.path;
+        return {
+          value: p.path,
+          label: isActive ? `${relativePath} ★` : relativePath,
+          description: p.type,
+        };
+      });
 
-      const projectOptions = projects.map(formatProject);
-      const projectChoice = await ctx.ui.select("Select a project:", projectOptions);
-      if (projectChoice === undefined) return;
+      const result = await showFilterableSelect(ctx, "Projects", items);
+      if (!result) return;
 
-      const projectIdx = projectOptions.indexOf(projectChoice);
-      const selectedProject = projectIdx >= 0 ? projects[projectIdx] : undefined;
+      const selectedProject = projects.find((p) => p.path === result);
       if (!selectedProject) return;
 
       // Save project, then cascade: auto-select scheme → auto-select destination
@@ -115,34 +184,7 @@ export default function (pi: ExtensionAPI) {
         };
       });
 
-      const maxVisible = Math.min(items.length, 20);
-
-      const result = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
-        const container = new Container();
-        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-        container.addChild(new Text(theme.fg("accent", theme.bold(` Schemes (${items.length})`)), 1, 0));
-
-        const selectList = new SelectList(items, maxVisible, {
-          selectedPrefix: (t) => theme.fg("accent", t),
-          selectedText: (t) => theme.fg("accent", t),
-          description: (t) => theme.fg("muted", t),
-          scrollInfo: (t) => theme.fg("dim", t),
-          noMatch: (t) => theme.fg("warning", t),
-        });
-        selectList.onSelect = (item) => done(item.value);
-        selectList.onCancel = () => done(null);
-        container.addChild(selectList);
-
-        container.addChild(new Text(theme.fg("dim", " ↑↓ navigate • type to filter • enter select • esc cancel"), 1, 0));
-        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
-
-        return {
-          render: (w: number) => container.render(w),
-          invalidate: () => container.invalidate(),
-          handleInput: (data: string) => { selectList.handleInput(data); tui.requestRender(); },
-        };
-      });
-
+      const result = await showFilterableSelect(ctx, "Schemes", items);
       if (!result) return;
 
       const selectedScheme = state.availableSchemes.find((s) => s.name === result);
@@ -172,7 +214,6 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const theme = ctx.ui.theme;
       const destinations = state.availableDestinations.filter((d) => !d.id.includes("placeholder"));
 
       if (destinations.length === 0) {
@@ -188,21 +229,20 @@ export default function (pi: ExtensionAPI) {
       };
       const sorted = [...destinations].sort((a, b) => sortOrder(a) - sortOrder(b));
 
-      const formatOption = (d: (typeof sorted)[number]) => {
-        let label = formatDestinationLabel(d);
-        if (state.activeDestination?.id === d.id) {
-          label += theme.fg("accent", " ★ active");
-        }
-        label += " " + theme.fg("dim", `[${d.platform}]`);
-        return label;
-      };
+      const items: SelectItem[] = sorted.map((d) => {
+        const isActive = state.activeDestination?.id === d.id;
+        const label = formatDestinationLabel(d);
+        return {
+          value: d.id,
+          label: isActive ? `${label} ★` : label,
+          description: d.platform,
+        };
+      });
 
-      const options = sorted.map(formatOption);
-      const choice = await ctx.ui.select("Select run destination:", options);
-      if (choice === undefined) return;
+      const result = await showFilterableSelect(ctx, "Destinations", items);
+      if (!result) return;
 
-      const selectedIndex = options.indexOf(choice);
-      const selected = selectedIndex >= 0 ? sorted[selectedIndex] : undefined;
+      const selected = sorted.find((d) => d.id === result);
       if (!selected) return;
 
       state.activeDestination = selected;
@@ -225,27 +265,20 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const theme = ctx.ui.theme;
+      const items: SelectItem[] = state.availableConfigurations.map((c) => {
+        const isActive = state.activeConfiguration === c;
+        return {
+          value: c,
+          label: isActive ? `${c} ★` : c,
+        };
+      });
 
-      const formatConfig = (c: string) => {
-        let label = c;
-        if (state.activeConfiguration === c) {
-          label += theme.fg("accent", " ★ active");
-        }
-        return label;
-      };
+      const result = await showFilterableSelect(ctx, "Configurations", items);
+      if (!result) return;
 
-      const configOptions = state.availableConfigurations.map(formatConfig);
-      const choice = await ctx.ui.select("Select build configuration:", configOptions);
-      if (choice === undefined) return;
-
-      const idx = configOptions.indexOf(choice);
-      const selected = idx >= 0 ? state.availableConfigurations[idx] : undefined;
-      if (!selected) return;
-
-      state.activeConfiguration = selected;
+      state.activeConfiguration = result;
       updateStatusBar(ctx.cwd, state, ctx.ui);
-      ctx.ui.notify(`Build configuration: ${selected}`, "info");
+      ctx.ui.notify(`Build configuration: ${result}`, "info");
     },
   });
 

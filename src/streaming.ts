@@ -8,6 +8,25 @@ import type { ExecFn, ExecResult } from "./types.js";
 import type { XcodeState } from "./state.js";
 
 /**
+ * Create a promise that resolves when an AbortSignal fires.
+ * Used to race against long-running exec calls so we can respond
+ * immediately to cancellation even if the underlying process hangs.
+ */
+function onAbort(signal: AbortSignal): Promise<ExecResult> {
+  return new Promise<ExecResult>((resolve) => {
+    if (signal.aborted) {
+      resolve({ stdout: "", stderr: "Aborted", code: 1, killed: true });
+      return;
+    }
+    signal.addEventListener(
+      "abort",
+      () => resolve({ stdout: "", stderr: "Aborted", code: 1, killed: true }),
+      { once: true },
+    );
+  });
+}
+
+/**
  * Regex matching xcodebuild task lines. Each match = one completed build step.
  * These lines start at column 0 with a known verb.
  */
@@ -40,7 +59,7 @@ export function createBuildExec(state: XcodeState, execFn?: ExecFn) {
 
     // If we have an injected exec (e.g. in tests/tools), use it with post-hoc counting
     if (execFn) {
-      return execFn(command, args, options).then(
+      const execPromise = execFn(command, args, options).then(
         (result) => {
           const combined = result.stdout + "\n" + result.stderr;
           state.completedTasks = countTasks(combined);
@@ -50,6 +69,13 @@ export function createBuildExec(state: XcodeState, execFn?: ExecFn) {
           return { stdout: "", stderr: String(error), code: 1, killed: false } as ExecResult;
         },
       );
+
+      // Race with abort signal so stop resolves immediately even if
+      // pi.exec doesn't handle AbortSignal or orphaned children keep pipes open.
+      if (options?.signal) {
+        return Promise.race([execPromise, onAbort(options.signal)]);
+      }
+      return execPromise;
     }
 
     // Real mode: spawn directly for real-time task counting
@@ -110,17 +136,20 @@ export function createBuildExec(state: XcodeState, execFn?: ExecFn) {
         settle({ stdout, stderr, code: 1, killed: false });
       });
 
-      // Handle abort signal
+      // Handle abort signal — kill process and settle immediately
       if (options?.signal) {
         if (options.signal.aborted) {
-          proc.kill("SIGTERM");
+          proc.kill("SIGKILL");
           killed = true;
           settle({ stdout, stderr, code: 1, killed: true });
           return;
         }
         options.signal.addEventListener("abort", () => {
           killed = true;
-          proc.kill("SIGTERM");
+          proc.kill("SIGKILL");
+          // Settle immediately — don't wait for `close` event which may
+          // hang if orphaned child processes (swift-frontend, clang) keep pipes open.
+          settle({ stdout, stderr, code: 1, killed: true });
         }, { once: true });
       }
 
@@ -129,7 +158,7 @@ export function createBuildExec(state: XcodeState, execFn?: ExecFn) {
         setTimeout(() => {
           if (!settled) {
             killed = true;
-            proc.kill("SIGTERM");
+            proc.kill("SIGKILL");
           }
         }, options.timeout);
       }
@@ -177,7 +206,7 @@ export function createTestExec(state: XcodeState, execFn?: ExecFn) {
 
     // If we have an injected exec (e.g. in tests/tools), use it with post-hoc counting
     if (execFn) {
-      return execFn(command, args, options).then(
+      const execPromise = execFn(command, args, options).then(
         (result) => {
           const combined = result.stdout + "\n" + result.stderr;
           const counts = countTests(combined);
@@ -190,6 +219,12 @@ export function createTestExec(state: XcodeState, execFn?: ExecFn) {
           return { stdout: "", stderr: String(error), code: 1, killed: false } as ExecResult;
         },
       );
+
+      // Race with abort signal so stop resolves immediately
+      if (options?.signal) {
+        return Promise.race([execPromise, onAbort(options.signal)]);
+      }
+      return execPromise;
     }
 
     // Real mode: spawn directly for real-time counting
@@ -244,14 +279,15 @@ export function createTestExec(state: XcodeState, execFn?: ExecFn) {
 
       if (options?.signal) {
         if (options.signal.aborted) {
-          proc.kill("SIGTERM");
+          proc.kill("SIGKILL");
           killed = true;
           settle({ stdout, stderr, code: 1, killed: true });
           return;
         }
         options.signal.addEventListener("abort", () => {
           killed = true;
-          proc.kill("SIGTERM");
+          proc.kill("SIGKILL");
+          settle({ stdout, stderr, code: 1, killed: true });
         }, { once: true });
       }
 
@@ -259,7 +295,7 @@ export function createTestExec(state: XcodeState, execFn?: ExecFn) {
         setTimeout(() => {
           if (!settled) {
             killed = true;
-            proc.kill("SIGTERM");
+            proc.kill("SIGKILL");
           }
         }, options.timeout);
       }

@@ -6,12 +6,13 @@ import { updateStatusBar, stopSpinner, type ResolveUI } from "../resolve.js";
 import { terminateApp, classifyDestination } from "../runner.js";
 
 /**
- * Kill any running xcodebuild processes. This provides immediate interruption
- * beyond just aborting the signal (which may take time to propagate).
+ * Force-kill any running xcodebuild processes. Uses SIGKILL (-9) for immediate
+ * termination — SIGTERM is not enough because xcodebuild may hang during cleanup,
+ * and orphaned child processes (swift-frontend, clang) can keep pipes open.
  */
 async function killXcodebuildProcesses(exec: ExecFn): Promise<void> {
   try {
-    await exec("pkill", ["-f", "xcodebuild"], { timeout: 5_000 });
+    await exec("pkill", ["-9", "-f", "xcodebuild"], { timeout: 5_000 });
   } catch {
     // No xcodebuild processes running — that's fine
   }
