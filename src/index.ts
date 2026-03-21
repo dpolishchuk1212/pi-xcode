@@ -1,6 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder } from "@mariozechner/pi-coding-agent";
+import { Container, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 import nodePath from "node:path";
-import type { ExecFn } from "./types.js";
+import type { ExecFn, SchemeProductType } from "./types.js";
 import { createState, startOperation, clearOperation } from "./state.js";
 import { discoverProjects } from "./discovery.js";
 import {
@@ -94,22 +96,56 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
-      const theme = ctx.ui.theme;
-
-      const formatScheme = (s: (typeof state.availableSchemes)[number]) => {
-        let label = s.name;
-        if (state.activeScheme?.name === s.name) {
-          label += theme.fg("accent", " ★ active");
+      const productTypeLabel = (t?: SchemeProductType): string => {
+        switch (t) {
+          case "app": return "Application";
+          case "framework": return "Framework";
+          case "test": return "Tests";
+          case "extension": return "Extension";
+          default: return "";
         }
-        return label;
       };
 
-      const schemeOptions = state.availableSchemes.map(formatScheme);
-      const schemeChoice = await ctx.ui.select("Select a scheme:", schemeOptions);
-      if (schemeChoice === undefined) return;
+      const items: SelectItem[] = state.availableSchemes.map((s) => {
+        const isActive = state.activeScheme?.name === s.name;
+        return {
+          value: s.name,
+          label: isActive ? `${s.name} ★` : s.name,
+          description: productTypeLabel(s.productType),
+        };
+      });
 
-      const schemeIdx = schemeOptions.indexOf(schemeChoice);
-      const selectedScheme = schemeIdx >= 0 ? state.availableSchemes[schemeIdx] : undefined;
+      const maxVisible = Math.min(items.length, 20);
+
+      const result = await ctx.ui.custom<string | null>((tui, theme, _kb, done) => {
+        const container = new Container();
+        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+        container.addChild(new Text(theme.fg("accent", theme.bold(` Schemes (${items.length})`)), 1, 0));
+
+        const selectList = new SelectList(items, maxVisible, {
+          selectedPrefix: (t) => theme.fg("accent", t),
+          selectedText: (t) => theme.fg("accent", t),
+          description: (t) => theme.fg("muted", t),
+          scrollInfo: (t) => theme.fg("dim", t),
+          noMatch: (t) => theme.fg("warning", t),
+        });
+        selectList.onSelect = (item) => done(item.value);
+        selectList.onCancel = () => done(null);
+        container.addChild(selectList);
+
+        container.addChild(new Text(theme.fg("dim", " ↑↓ navigate • type to filter • enter select • esc cancel"), 1, 0));
+        container.addChild(new DynamicBorder((s: string) => theme.fg("accent", s)));
+
+        return {
+          render: (w: number) => container.render(w),
+          invalidate: () => container.invalidate(),
+          handleInput: (data: string) => { selectList.handleInput(data); tui.requestRender(); },
+        };
+      });
+
+      if (!result) return;
+
+      const selectedScheme = state.availableSchemes.find((s) => s.name === result);
       if (!selectedScheme) return;
 
       // Save scheme, then cascade: refresh destinations
