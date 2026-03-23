@@ -665,6 +665,13 @@ export default function (pi: ExtensionAPI) {
     pi.setActiveTools([...withoutBuiltIn, ...builtInXcodeTools]);
 
     // Auto-detect project → scheme → destination silently
+    console.log("[pi-xcode] auto-detecting project in:", sessionCwd);
     await autoDetect(exec, sessionCwd, state, ctx.ui);
+    console.log("[pi-xcode] auto-detect result:",
+      "project:", state.activeProject?.path ?? "none",
+      "scheme:", state.activeScheme?.name ?? "none",
+      "destination:", state.activeDestination ? `${state.activeDestination.name} (${state.activeDestination.platform})` : "none",
+      "configuration:", state.activeConfiguration ?? "none",
+    );
   });
 }

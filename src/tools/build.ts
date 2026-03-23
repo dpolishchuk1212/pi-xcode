@@ -67,6 +67,9 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
         destination,
       });
 
+      console.log("[xcode_build] full command: xcodebuild", args.join(" "));
+      console.log("[xcode_build] destination:", destination, "configuration:", configuration);
+
       const destLabel = destinationLabel ? ` for ${destinationLabel}` : "";
       onUpdate?.({ content: [{ type: "text", text: `Building${destLabel}...` }], details: undefined });
 
@@ -85,8 +88,10 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
           timeout: 600_000,
           cwd: xcodeArgs.execCwd,
         });
+        console.log("[xcode_build] exit code:", result.code, "killed:", result.killed);
         const combined = `${result.stdout}\n${result.stderr}`;
         const buildResult = parseBuildResult(combined);
+        console.log("[xcode_build] success:", buildResult.success, "issues:", buildResult.issues.length);
 
         const summary = formatBuildResult(buildResult);
         const destLine = destinationLabel ? `\nDestination: ${destinationLabel}` : "";
