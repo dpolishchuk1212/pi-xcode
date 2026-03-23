@@ -11,7 +11,6 @@ import {
   buildSimctlListArgs,
   buildSimulatorDestination,
   buildTestArgs,
-  buildXctraceArgs,
 } from "../src/commands.js";
 
 // ── Base args ──────────────────────────────────────────────────────────────
@@ -177,31 +176,6 @@ describe("buildSimctlLaunchArgs", () => {
   it("includes -w for debugger wait", () => {
     const args = buildSimctlLaunchArgs("UDID-123", "com.example.app", true);
     expect(args).toContain("-w");
-  });
-});
-
-// ── xctrace args ───────────────────────────────────────────────────────────
-
-describe("buildXctraceArgs", () => {
-  it("builds basic xctrace args", () => {
-    const args = buildXctraceArgs({ template: "Time Profiler", appPath: "/path/App.app" });
-    expect(args).toEqual(["xctrace", "record", "--template", "Time Profiler", "--launch", "--", "/path/App.app"]);
-  });
-
-  it("includes device, output, and time limit", () => {
-    const args = buildXctraceArgs({
-      template: "Allocations",
-      device: "UDID-123",
-      appPath: "/path/App.app",
-      outputDir: "/tmp/trace",
-      timeLimit: 60,
-    });
-    expect(args).toContain("--device");
-    expect(args).toContain("UDID-123");
-    expect(args).toContain("--output");
-    expect(args).toContain("/tmp/trace");
-    expect(args).toContain("--time-limit");
-    expect(args).toContain("60s");
   });
 });
 

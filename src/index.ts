@@ -37,7 +37,6 @@ import { createBuildExec, createTestExec } from "./streaming.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
 import { registerDiscoverTool } from "./tools/discover.js";
-import { registerProfileTool } from "./tools/profile.js";
 import { registerRunTool } from "./tools/run.js";
 import { registerStopTool, stopActiveOperation } from "./tools/stop.js";
 import { registerTestTool } from "./tools/test.js";
@@ -586,19 +585,10 @@ export default function (pi: ExtensionAPI) {
     registerDiscoverTool(pi, exec, sessionCwd);
     registerRunTool(pi, exec, sessionCwd, state);
     registerTestTool(pi, exec, sessionCwd, state);
-    registerProfileTool(pi, exec, sessionCwd, state);
     registerStopTool(pi, exec, sessionCwd, state);
 
     // Replace built-in xcode tools with our versions
-    const builtInXcodeTools = [
-      "xcode_build",
-      "xcode_clean",
-      "xcode_discover",
-      "xcode_run",
-      "xcode_test",
-      "xcode_profile",
-      "xcode_stop",
-    ];
+    const builtInXcodeTools = ["xcode_build", "xcode_clean", "xcode_discover", "xcode_run", "xcode_test", "xcode_stop"];
     const currentTools = pi.getActiveTools();
     const withoutBuiltIn = currentTools.filter((t) => !builtInXcodeTools.includes(t));
     pi.setActiveTools([...withoutBuiltIn, ...builtInXcodeTools]);

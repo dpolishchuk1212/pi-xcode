@@ -1,7 +1,7 @@
 {
   "name": "pi-xcode",
   "version": "0.1.0",
-  "description": "Pi extension for building, running, debugging, and profiling Xcode projects",
+  "description": "Pi extension for building, running, and testing Xcode projects",
   "type": "module",
   "keywords": [
     "pi-package"
@@ -20,14 +20,12 @@
     "check": "tsc --noEmit && biome check && knip"
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
     "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*",
     "@sinclair/typebox": "*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.8",
-    "@mariozechner/pi-ai": "*",
     "@mariozechner/pi-coding-agent": "*",
     "@sinclair/typebox": "*",
     "knip": "^6.0.1",

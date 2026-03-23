@@ -138,35 +138,6 @@ export function buildSimctlLaunchArgs(udid: string, bundleId: string, waitForDeb
 }
 
 /**
- * `xcrun xctrace record` arguments for profiling.
- */
-export function buildXctraceArgs(opts: {
-  template: string;
-  device?: string;
-  appPath: string;
-  outputDir?: string;
-  timeLimit?: number;
-}): string[] {
-  const args = ["xctrace", "record", "--template", opts.template];
-
-  if (opts.device) {
-    args.push("--device", opts.device);
-  }
-
-  if (opts.outputDir) {
-    args.push("--output", opts.outputDir);
-  }
-
-  if (opts.timeLimit) {
-    args.push("--time-limit", `${opts.timeLimit}s`);
-  }
-
-  args.push("--launch", "--", opts.appPath);
-
-  return args;
-}
-
-/**
  * Build the destination string for a simulator.
  */
 export function buildSimulatorDestination(simulator: string): string {
