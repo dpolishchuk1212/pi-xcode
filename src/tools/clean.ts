@@ -1,15 +1,10 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { buildCleanArgs } from "../commands.js";
-import {
-  getXcodebuildProjectArgs,
-  resolveProjectAndScheme,
-  startSpinner,
-  stopSpinner,
-  updateStatusBar,
-} from "../resolve.js";
+import { getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
 import type { XcodeState } from "../state.js";
 import { clearOperation, startOperation } from "../state.js";
+import { startSpinner, stopSpinner, updateStatusBar } from "../status-bar.js";
 import type { ExecFn } from "../types.js";
 import { stopActiveOperation } from "./stop.js";
 

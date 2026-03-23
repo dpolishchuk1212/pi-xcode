@@ -26,9 +26,6 @@ import {
   getXcodebuildProjectArgs,
   refreshDestinations,
   refreshSchemes,
-  startSpinner,
-  stopSpinner,
-  updateStatusBar,
 } from "./resolve.js";
 import {
   destinationTypeLabel,
@@ -39,6 +36,7 @@ import {
   terminateApp,
 } from "./runner.js";
 import { clearOperation, createState, startOperation } from "./state.js";
+import { startSpinner, stopSpinner, updateStatusBar } from "./status-bar.js";
 import { createBuildExec, createTestExec } from "./streaming.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";

@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
+import { pickBestDestination } from "../src/auto-select.js";
 import {
   autoDetect,
   formatDestinationLabel,
   getXcodebuildProjectArgs,
-  pickBestDestination,
   refreshConfigurations,
   resolveProjectAndScheme,
-  updateStatusBar,
 } from "../src/resolve.js";
 import { createState } from "../src/state.js";
+import { updateStatusBar } from "../src/status-bar.js";
 import type { Destination, ExecFn, ExecResult } from "../src/types.js";
 
 // ── Helpers ────────────────────────────────────────────────────────────────

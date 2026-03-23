@@ -3,15 +3,10 @@ import { Type } from "@sinclair/typebox";
 import { buildDestinationString, buildSimulatorDestination, buildTestArgs } from "../commands.js";
 import { formatTestResult } from "../format.js";
 import { parseTestResult } from "../parsers.js";
-import {
-  getXcodebuildProjectArgs,
-  resolveProjectAndScheme,
-  startSpinner,
-  stopSpinner,
-  updateStatusBar,
-} from "../resolve.js";
+import { getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
 import type { XcodeState } from "../state.js";
 import { clearOperation, startOperation } from "../state.js";
+import { startSpinner, stopSpinner, updateStatusBar } from "../status-bar.js";
 import { createTestExec } from "../streaming.js";
 import type { ExecFn, TestResult } from "../types.js";
 

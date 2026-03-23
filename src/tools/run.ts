@@ -9,14 +9,7 @@ import {
 import { discoverSimulators, findSimulator } from "../discovery.js";
 import { formatBuildResult } from "../format.js";
 import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
-import {
-  formatDestinationLabel,
-  getXcodebuildProjectArgs,
-  resolveProjectAndScheme,
-  startSpinner,
-  stopSpinner,
-  updateStatusBar,
-} from "../resolve.js";
+import { formatDestinationLabel, getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
 import {
   classifyDestination,
   destinationTypeLabel,
@@ -28,6 +21,7 @@ import {
 } from "../runner.js";
 import type { XcodeState } from "../state.js";
 import { clearOperation, startOperation } from "../state.js";
+import { startSpinner, stopSpinner, updateStatusBar } from "../status-bar.js";
 import { createBuildExec } from "../streaming.js";
 import type { Destination, ExecFn } from "../types.js";
 

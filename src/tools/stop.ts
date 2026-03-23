@@ -1,8 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { type ResolveUI, stopSpinner, updateStatusBar } from "../resolve.js";
+import type { ResolveUI } from "../resolve.js";
 import { classifyDestination } from "../runner.js";
 import type { XcodeState } from "../state.js";
+import { stopSpinner, updateStatusBar } from "../status-bar.js";
 import type { ExecFn } from "../types.js";
 
 /**

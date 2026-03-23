@@ -3,9 +3,12 @@
  */
 
 import nodePath from "node:path";
+import { pickBestDestination, pickBestScheme, projectBaseName } from "./auto-select.js";
 import { discoverConfigurations, discoverDestinations, discoverProjects, discoverSchemes } from "./discovery.js";
 import type { XcodeState } from "./state.js";
-import type { Destination, ExecFn, XcodeProject, XcodeScheme } from "./types.js";
+import type { StatusBarUI } from "./status-bar.js";
+import { updateStatusBar } from "./status-bar.js";
+import type { Destination, ExecFn, XcodeProject } from "./types.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -90,7 +93,7 @@ async function discoverAndSelect(
   if (projects.length === 1) {
     selectedProject = projects[0];
   } else {
-    const options = projects.map((p) => path.relative(cwd, p.path) || p.path);
+    const options = projects.map((p) => nodePath.relative(cwd, p.path) || p.path);
     const choice = await ui.select("Select a project:", options);
     if (choice === undefined) {
       throw new Error("Cancelled — no project selected.");
@@ -117,11 +120,7 @@ async function discoverAndSelect(
  * Discover schemes for the active project, auto-select the best one,
  * then refresh destinations and configurations. Updates state.
  */
-export async function refreshSchemes(
-  exec: ExecFn,
-  state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus" | "theme">,
-): Promise<void> {
+export async function refreshSchemes(exec: ExecFn, state: XcodeState, ui: StatusBarUI): Promise<void> {
   if (!state.activeProject) {
     state.availableSchemes = [];
     state.activeScheme = undefined;
@@ -169,11 +168,7 @@ export async function refreshConfigurations(exec: ExecFn, state: XcodeState): Pr
  * Discover destinations for the active project/scheme and store them.
  * Auto-selects the best destination (prefer iPhone sim with latest OS).
  */
-export async function refreshDestinations(
-  exec: ExecFn,
-  state: XcodeState,
-  _ui: Pick<ResolveUI, "setStatus" | "theme">,
-): Promise<void> {
+export async function refreshDestinations(exec: ExecFn, state: XcodeState, _ui: StatusBarUI): Promise<void> {
   if (!state.activeProject || !state.activeScheme) {
     state.availableDestinations = [];
     state.activeDestination = undefined;
@@ -189,95 +184,6 @@ export async function refreshDestinations(
 }
 
 /**
- * Pick the best scheme from a list.
- * Priority:
- *   1. App scheme whose name matches the project/workspace name
- *   2. Any app scheme (productType === "app")
- *   3. Extension schemes (also executable)
- *   4. Non-test, non-framework schemes (fallback heuristic by name)
- *   5. First scheme
- *
- * @param projectName - Optional project/workspace base name (e.g. "Letyco") for tiebreaking
- */
-function pickBestScheme(schemes: XcodeScheme[], projectName?: string): XcodeScheme | undefined {
-  if (schemes.length === 0) return undefined;
-
-  // 1. Prefer app schemes (identified from .xcscheme file)
-  const appSchemes = schemes.filter((s) => s.productType === "app");
-  if (appSchemes.length > 0) {
-    // Among app schemes, prefer the one matching the project name
-    if (projectName) {
-      const matching = appSchemes.find((s) => s.name === projectName);
-      if (matching) return matching;
-    }
-    return appSchemes[0];
-  }
-
-  // 2. Prefer extension schemes (also executable)
-  const extSchemes = schemes.filter((s) => s.productType === "extension");
-  if (extSchemes.length > 0) return extSchemes[0];
-
-  // 3. Fallback: exclude test/framework by name when productType isn't known
-  const nonTestNonFramework = schemes.filter((s) => {
-    const lower = s.name.toLowerCase();
-    return !lower.includes("test") && !lower.includes("framework");
-  });
-  if (nonTestNonFramework.length > 0) {
-    // Among these, prefer matching project name
-    if (projectName) {
-      const matching = nonTestNonFramework.find((s) => s.name === projectName);
-      if (matching) return matching;
-    }
-    return nonTestNonFramework[0];
-  }
-
-  // 4. Last resort
-  return schemes[0];
-}
-
-/**
- * Extract the base name from a project/workspace path.
- * e.g. "path/to/Letyco.xcworkspace" → "Letyco"
- *      "path/to/MyApp.xcodeproj" → "MyApp"
- *      "path/to/Package.swift" → "Package"
- */
-function projectBaseName(projectPath: string): string {
-  const base = nodePath.basename(projectPath);
-  // Strip .xcworkspace, .xcodeproj, .swift
-  return base.replace(/\.(xcworkspace|xcodeproj|swift)$/, "");
-}
-
-/**
- * Pick the best destination from a list.
- * Prefers: iPhone simulator → iPad simulator → any simulator → first available.
- */
-export function pickBestDestination(destinations: Destination[]): Destination | undefined {
-  if (destinations.length === 0) return undefined;
-
-  // Filter out placeholder destinations
-  const real = destinations.filter((d) => !d.id.includes("placeholder"));
-  if (real.length === 0) return destinations[0];
-
-  // Prefer simulators (easier for dev)
-  const sims = real.filter((d) => d.platform.includes("Simulator"));
-
-  if (sims.length > 0) {
-    // Prefer iPhones, then sort by OS descending (latest first)
-    const iphones = sims.filter((d) => d.name.startsWith("iPhone"));
-    if (iphones.length > 0) {
-      return iphones.sort((a, b) => (b.os ?? "").localeCompare(a.os ?? ""))[0];
-    }
-    const ipads = sims.filter((d) => d.name.startsWith("iPad"));
-    if (ipads.length > 0) {
-      return ipads.sort((a, b) => (b.os ?? "").localeCompare(a.os ?? ""))[0];
-    }
-    return sims[0];
-  }
-
-  return real[0];
-}
-
-/**
  * Format a destination for display in a picker list.
  */
 export function formatDestinationLabel(d: Destination): string {
@@ -287,127 +193,13 @@ export function formatDestinationLabel(d: Destination): string {
   return parts.join(" ");
 }
 
-// ── Status bar ─────────────────────────────────────────────────────────────
-
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-let spinnerIndex = 0;
-
-/**
- * Start an animated spinner in the status bar. Updates every 100ms.
- * Returns a cleanup function to stop the spinner.
- */
-export function startSpinner(cwd: string, state: XcodeState, ui: Pick<ResolveUI, "setStatus" | "theme">): void {
-  // Stop any existing spinner
-  stopSpinner(state);
-
-  state.operationStartTime = Date.now();
-  state.completedTasks = 0;
-  state.passedTests = 0;
-  state.failedTests = 0;
-  spinnerIndex = 0;
-
-  const timer = setInterval(() => {
-    spinnerIndex++;
-    updateStatusBar(cwd, state, ui);
-  }, 100);
-
-  state.stopSpinner = () => {
-    clearInterval(timer);
-    state.stopSpinner = undefined;
-    state.operationStartTime = undefined;
-  };
-}
-
-/**
- * Stop the status bar spinner animation.
- */
-export function stopSpinner(state: XcodeState): void {
-  state.stopSpinner?.();
-}
-
-/**
- * Update the unified status bar: `project · scheme · configuration · destination`
- * Styled to match the native pi footer (dim text).
- */
-export function updateStatusBar(cwd: string, state: XcodeState, ui: Pick<ResolveUI, "setStatus" | "theme">): void {
-  const { theme } = ui;
-  const parts: string[] = [];
-
-  if (state.activeProject) {
-    const label = path.relative(cwd, state.activeProject.path) || state.activeProject.path;
-    parts.push(theme.fg("dim", label));
-  }
-
-  if (state.activeScheme) {
-    parts.push(theme.fg("dim", state.activeScheme.name));
-  }
-
-  if (state.activeConfiguration) {
-    parts.push(theme.fg("dim", state.activeConfiguration));
-  }
-
-  if (state.activeDestination) {
-    const d = state.activeDestination;
-    const osLabel = d.os ? ` ${d.os}` : "";
-    parts.push(theme.fg("dim", `${d.name}${osLabel}`));
-  }
-
-  if (state.appStatus !== "idle") {
-    const statusConfig: Record<string, { color: string; label: string }> = {
-      building: { color: "warning", label: "Building" },
-      testing: { color: "warning", label: "Testing" },
-      cleaning: { color: "warning", label: "Cleaning" },
-      profiling: { color: "warning", label: "Profiling" },
-      running: { color: "accent", label: "Running" },
-    };
-    const config = statusConfig[state.appStatus] ?? { color: "dim", label: state.appStatus };
-
-    // Elapsed time and progress info
-    let elapsed = "";
-    if (state.operationStartTime && state.appStatus !== "running") {
-      const seconds = Math.floor((Date.now() - state.operationStartTime) / 1000);
-
-      let progress = "";
-      if (state.appStatus === "testing") {
-        const total = state.passedTests + state.failedTests;
-        if (total > 0) {
-          progress =
-            state.failedTests > 0 ? ` [${state.passedTests}✓ ${state.failedTests}✗]` : ` [${state.passedTests}✓]`;
-        }
-      } else if (state.completedTasks > 0) {
-        progress = ` [${state.completedTasks}]`;
-      }
-
-      elapsed = ` ${seconds}s${progress}`;
-    }
-
-    // Spinner frame (for non-idle, non-running states)
-    const spinnerFrame =
-      state.appStatus !== "running" ? `${SPINNER_FRAMES[spinnerIndex % SPINNER_FRAMES.length]} ` : "▶ ";
-
-    parts.push(theme.fg(config.color, `${spinnerFrame}${config.label}${elapsed}`));
-  }
-
-  if (parts.length === 0) {
-    ui.setStatus("xcode", undefined);
-  } else {
-    const separator = theme.fg("dim", " · ");
-    ui.setStatus("xcode", parts.join(separator));
-  }
-}
-
 // ── Silent auto-detect (session start) ─────────────────────────────────────
 
 /**
  * Silently auto-detect the best project, scheme, and destination at session start.
  * Picks the first match without prompting. Updates state and status bar.
  */
-export async function autoDetect(
-  exec: ExecFn,
-  cwd: string,
-  state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus" | "theme">,
-): Promise<void> {
+export async function autoDetect(exec: ExecFn, cwd: string, state: XcodeState, ui: StatusBarUI): Promise<void> {
   // ── Project ──────────────────────────────────────────────────────────
   const projects = await discoverProjects(exec, cwd, 6);
 
@@ -452,6 +244,3 @@ function resolveProjectType(projectPath: string, isWorkspace: boolean): XcodePro
   if (projectPath.endsWith("Package.swift")) return "package";
   return "project";
 }
-
-/** Re-export path utilities under a shorter alias. */
-const path = nodePath;

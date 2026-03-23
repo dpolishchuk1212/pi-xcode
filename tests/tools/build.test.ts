@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createState } from "../../src/state.js";
 import type { XcodeState } from "../../src/state.js";
+import { createState } from "../../src/state.js";
 import { registerBuildTool } from "../../src/tools/build.js";
 import type { ExecFn, ExecResult } from "../../src/types.js";
 
@@ -184,13 +184,10 @@ describe("xcode_build tool", () => {
     let hadAbortController = false;
 
     const state = createState();
-    const exec = createCapturingExec(
-      [["build", { stdout: "** BUILD SUCCEEDED **\n", code: 0 }]],
-      () => {
-        statusDuringBuild = state.appStatus;
-        hadAbortController = !!state.activeAbortController;
-      },
-    );
+    const exec = createCapturingExec([["build", { stdout: "** BUILD SUCCEEDED **\n", code: 0 }]], () => {
+      statusDuringBuild = state.appStatus;
+      hadAbortController = !!state.activeAbortController;
+    });
 
     registerBuildTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_build");
@@ -255,13 +252,7 @@ describe("xcode_build tool", () => {
     const tool = mockPi.getTool("xcode_build");
     const ctx = createMockCtx();
 
-    const result = await tool.execute(
-      "call-1",
-      { project: "App.xcodeproj", scheme: "App" },
-      undefined,
-      vi.fn(),
-      ctx,
-    );
+    const result = await tool.execute("call-1", { project: "App.xcodeproj", scheme: "App" }, undefined, vi.fn(), ctx);
 
     expect(result.details.success).toBe(false);
     expect(state.appStatus).toBe("idle");
@@ -272,7 +263,7 @@ describe("xcode_build tool", () => {
   it("calls updateStatusBar after the build completes", async () => {
     const state = createState();
     // Set a scheme so the status bar has content to render
-    state.activeScheme = { name: "App" };
+    state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
     const exec = createMockExec([["build", { stdout: "** BUILD SUCCEEDED **\n", code: 0 }]]);
 
     registerBuildTool(mockPi as any, exec, "/project", state);
