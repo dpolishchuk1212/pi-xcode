@@ -192,8 +192,8 @@ describe("xcode_run tool", () => {
     expect(result.details.success).toBe(true);
     expect(result.details.launched).toBe(true);
     // Verify no build command was issued
-    const calls = (exec as ReturnType<typeof vi.fn>).mock.calls;
-    const buildCalls = calls.filter(([cmd, args]: [string, string[]]) => args.includes("build"));
+    const calls = (exec as ReturnType<typeof vi.fn>).mock.calls as [string, string[]][];
+    const buildCalls = calls.filter(([cmd, args]) => args.includes("build"));
     expect(buildCalls).toHaveLength(0);
   });
 

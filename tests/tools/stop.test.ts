@@ -181,8 +181,8 @@ describe("stopActiveOperation", () => {
     await stopActiveOperation(exec, "/project", state, ui);
 
     // Should NOT call simctl terminate (mac destination)
-    const calls = (exec as ReturnType<typeof vi.fn>).mock.calls;
-    const terminateCalls = calls.filter(([cmd, args]: [string, string[]]) =>
+    const calls = (exec as ReturnType<typeof vi.fn>).mock.calls as [string, string[]][];
+    const terminateCalls = calls.filter(([cmd, args]) =>
       cmd === "xcrun" && args.includes("terminate"),
     );
     expect(terminateCalls).toHaveLength(0);
