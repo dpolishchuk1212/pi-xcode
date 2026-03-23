@@ -18,8 +18,9 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       "Build an Xcode project or workspace. Auto-discovers project, workspace, and scheme when not specified. Returns parsed build errors/warnings.",
     promptSnippet: "Build an Xcode project or workspace, returning parsed errors and warnings",
     promptGuidelines: [
-      "Use xcode_build to compile Xcode projects. Omit project/workspace/scheme to auto-discover them.",
-      "Specify configuration as 'Debug' or 'Release'. Default is 'Debug'.",
+      "Use xcode_build to compile Xcode projects.",
+      "Omit all parameters to use the already-selected project, scheme, configuration, and destination.",
+      "Only pass parameters if the user explicitly asks to use something different than what is selected.",
     ],
     parameters: Type.Object({
       project: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),

@@ -19,6 +19,8 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
     promptSnippet: "Run Xcode unit or UI tests and return structured pass/fail results",
     promptGuidelines: [
       "Use xcode_test to run tests. It returns a summary with pass/fail counts and individual test case results.",
+      "Omit all parameters to use the already-selected project, scheme, configuration, and destination.",
+      "Only pass parameters if the user explicitly asks to use something different than what is selected.",
       "Use onlyTesting to run a specific test class or method, e.g. 'MyAppTests/MyTests/testFoo'.",
     ],
     parameters: Type.Object({
