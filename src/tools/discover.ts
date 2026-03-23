@@ -10,7 +10,8 @@ export function registerDiscoverTool(pi: ExtensionAPI, exec: ExecFn, cwd: string
     description: "Discover Xcode projects, workspaces, schemes, and available simulators in the current directory.",
     promptSnippet: "List Xcode projects, schemes, and available simulators",
     promptGuidelines: [
-      "Use xcode_discover before building or running if you need to know available schemes or simulators.",
+      "Only call when the user explicitly asks to list or change simulators/schemes.",
+      "Do NOT call before xcode_build, xcode_test, or xcode_run — they already use the selected destination.",
     ],
     parameters: Type.Object({}),
 
