@@ -331,6 +331,7 @@ export default function (pi: ExtensionAPI) {
       });
 
       const destSuffix = destinationLabel ? ` → ${destinationLabel}` : "";
+      console.log("[pi-xcode] /build command: xcodebuild", args.join(" "));
       state.appStatus = "building";
       startSpinner(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Building ${state.activeScheme.name} (${configuration})${destSuffix}...`, "info");
@@ -339,8 +340,10 @@ export default function (pi: ExtensionAPI) {
       try {
         const buildExec = createBuildExec(state);
         const result = await buildExec("xcodebuild", args, { signal, timeout: 600_000, cwd: xcodeArgs.execCwd });
+        console.log("[pi-xcode] /build exit code:", result.code, "killed:", result.killed);
         const combined = `${result.stdout}\n${result.stderr}`;
         const buildResult = parseBuildResult(combined);
+        console.log("[pi-xcode] /build success:", buildResult.success, "issues:", buildResult.issues.length);
 
         ctx.ui.notify(formatBuildResult(buildResult), buildResult.success ? "info" : "error");
       } finally {
@@ -536,6 +539,7 @@ export default function (pi: ExtensionAPI) {
 
       const filterLabel = onlyTesting.length > 0 ? ` (${onlyTesting.join(", ")})` : "";
       const planLabel = testPlan ? ` [plan: ${testPlan}]` : "";
+      console.log("[pi-xcode] /test command: xcodebuild", testArgs.join(" "));
       state.appStatus = "testing";
       startSpinner(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Testing ${state.activeScheme.name}${filterLabel}${planLabel} on ${destLabel}...`, "info");
@@ -544,8 +548,15 @@ export default function (pi: ExtensionAPI) {
       try {
         const testExec = createTestExec(state);
         const result = await testExec("xcodebuild", testArgs, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
+        console.log("[pi-xcode] /test exit code:", result.code, "killed:", result.killed);
         const combined = `${result.stdout}\n${result.stderr}`;
+
+        console.log("[pi-xcode] /test --- RAW OUTPUT (last 3000 chars) ---");
+        console.log(combined.slice(-3000));
+        console.log("[pi-xcode] /test --- END RAW OUTPUT ---");
+
         const testResult = parseTestResult(combined);
+        console.log("[pi-xcode] /test parsed: total=%d passed=%d failed=%d", testResult.total, testResult.passed, testResult.failed);
 
         if (testResult.success) {
           ctx.ui.notify(`✅ All ${testResult.total} tests passed (${testResult.duration.toFixed(1)}s)`, "info");
@@ -646,6 +657,20 @@ export default function (pi: ExtensionAPI) {
       const result = await stopActiveOperation(exec, ctx.cwd, state, ctx.ui);
       ctx.ui.notify(result.content[0].text, result.details.stopped ? "info" : "error");
     },
+  });
+
+  // ── Debug: log tool lifecycle events ────────────────────────────────
+  pi.on("tool_execution_start", async (event) => {
+    if (event.toolName.startsWith("xcode_")) {
+      console.log(`[pi-xcode] tool_execution_start: ${event.toolName} (${event.toolCallId})`);
+      console.log(`[pi-xcode]   args: ${JSON.stringify(event.args)}`);
+    }
+  });
+
+  pi.on("tool_execution_end", async (event) => {
+    if (event.toolName.startsWith("xcode_")) {
+      console.log(`[pi-xcode] tool_execution_end: ${event.toolName} (${event.toolCallId}) isError: ${event.isError}`);
+    }
   });
 
   // ── Register tools (override built-in xcode tools) ────────────────────
