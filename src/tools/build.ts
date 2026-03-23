@@ -9,6 +9,7 @@ import {
   resolveProjectAndScheme,
   startSpinner,
   stopSpinner,
+  updateStatusBar,
 } from "../resolve.js";
 import type { XcodeState } from "../state.js";
 import { clearOperation, startOperation } from "../state.js";
@@ -75,12 +76,13 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       const destLabel = destinationLabel ? ` for ${destinationLabel}` : "";
       onUpdate?.({ content: [{ type: "text", text: `Building${destLabel}...` }], details: undefined });
 
+      state.appStatus = "building";
+      startSpinner(cwd, state, ctx.ui);
       const combinedSignal = startOperation(
         state,
         `Build ${resolved.scheme ?? "project"} (${configuration})${destLabel}`,
         signal,
       );
-      startSpinner(cwd, state, ctx.ui);
 
       try {
         const buildExecFn = createBuildExec(state, exec);
@@ -108,6 +110,8 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       } finally {
         clearOperation(state);
         stopSpinner(state);
+        state.appStatus = "idle";
+        updateStatusBar(cwd, state, ctx.ui);
       }
     },
   });

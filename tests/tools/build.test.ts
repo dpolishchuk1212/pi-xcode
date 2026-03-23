@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createState } from "../../src/state.js";
+import type { XcodeState } from "../../src/state.js";
 import { registerBuildTool } from "../../src/tools/build.js";
 import type { ExecFn, ExecResult } from "../../src/types.js";
 
@@ -20,6 +21,26 @@ function createMockExec(responses: [pattern: string, result: Partial<ExecResult>
     const key = `${command} ${args.join(" ")}`;
     for (const [pattern, response] of responses) {
       if (key.includes(pattern)) {
+        return { stdout: "", stderr: "", code: 0, killed: false, ...response };
+      }
+    }
+    return { stdout: "", stderr: "", code: 1, killed: false };
+  });
+}
+
+/**
+ * Creates a mock exec that captures state snapshots mid-flight when the build
+ * command is invoked. The `callback` runs synchronously before the exec resolves.
+ */
+function createCapturingExec(
+  responses: [pattern: string, result: Partial<ExecResult>][],
+  callback: () => void,
+): ExecFn {
+  return vi.fn(async (command: string, args: string[]) => {
+    const key = `${command} ${args.join(" ")}`;
+    for (const [pattern, response] of responses) {
+      if (key.includes(pattern)) {
+        if (key.includes("build")) callback();
         return { stdout: "", stderr: "", code: 0, killed: false, ...response };
       }
     }
@@ -154,5 +175,113 @@ describe("xcode_build tool", () => {
     const ctx = createMockCtx();
 
     await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(/No Xcode project/);
+  });
+
+  // ── appStatus lifecycle ────────────────────────────────────────────────
+
+  it("sets appStatus to 'building' during the build", async () => {
+    let statusDuringBuild: XcodeState["appStatus"] | undefined;
+    let hadAbortController = false;
+
+    const state = createState();
+    const exec = createCapturingExec(
+      [["build", { stdout: "** BUILD SUCCEEDED **\n", code: 0 }]],
+      () => {
+        statusDuringBuild = state.appStatus;
+        hadAbortController = !!state.activeAbortController;
+      },
+    );
+
+    registerBuildTool(mockPi as any, exec, "/project", state);
+    const tool = mockPi.getTool("xcode_build");
+    const ctx = createMockCtx();
+
+    await tool.execute("call-1", { project: "App.xcodeproj", scheme: "App" }, undefined, vi.fn(), ctx);
+
+    expect(statusDuringBuild).toBe("building");
+    expect(hadAbortController).toBe(true);
+  });
+
+  it("resets appStatus to 'idle' after a successful build", async () => {
+    const state = createState();
+    const exec = createMockExec([["build", { stdout: "** BUILD SUCCEEDED **\n", code: 0 }]]);
+
+    registerBuildTool(mockPi as any, exec, "/project", state);
+    const tool = mockPi.getTool("xcode_build");
+    const ctx = createMockCtx();
+
+    await tool.execute("call-1", { project: "App.xcodeproj", scheme: "App" }, undefined, vi.fn(), ctx);
+
+    expect(state.appStatus).toBe("idle");
+    expect(state.activeAbortController).toBeUndefined();
+    expect(state.activeOperationLabel).toBeUndefined();
+  });
+
+  it("resets appStatus to 'idle' after a failed build", async () => {
+    const state = createState();
+    const exec = createMockExec([
+      [
+        "build",
+        {
+          stdout: `/path/Foo.swift:1:1: error: bad\n** BUILD FAILED **`,
+          code: 65,
+        },
+      ],
+    ]);
+
+    registerBuildTool(mockPi as any, exec, "/project", state);
+    const tool = mockPi.getTool("xcode_build");
+    const ctx = createMockCtx();
+
+    await tool.execute("call-1", { project: "App.xcodeproj", scheme: "App" }, undefined, vi.fn(), ctx);
+
+    expect(state.appStatus).toBe("idle");
+    expect(state.activeAbortController).toBeUndefined();
+  });
+
+  it("resets appStatus to 'idle' when exec throws", async () => {
+    // createBuildExec swallows exec errors (returns ExecResult with code 1),
+    // so the build tool won't throw — but state must still be cleaned up.
+    const state = createState();
+    const exec = vi.fn(async (command: string, args: string[]) => {
+      const key = `${command} ${args.join(" ")}`;
+      if (key.includes("build")) {
+        throw new Error("xcodebuild crashed");
+      }
+      return { stdout: "", stderr: "", code: 1, killed: false };
+    }) as ExecFn;
+
+    registerBuildTool(mockPi as any, exec, "/project", state);
+    const tool = mockPi.getTool("xcode_build");
+    const ctx = createMockCtx();
+
+    const result = await tool.execute(
+      "call-1",
+      { project: "App.xcodeproj", scheme: "App" },
+      undefined,
+      vi.fn(),
+      ctx,
+    );
+
+    expect(result.details.success).toBe(false);
+    expect(state.appStatus).toBe("idle");
+    expect(state.activeAbortController).toBeUndefined();
+    expect(state.activeOperationLabel).toBeUndefined();
+  });
+
+  it("calls updateStatusBar after the build completes", async () => {
+    const state = createState();
+    // Set a scheme so the status bar has content to render
+    state.activeScheme = { name: "App" };
+    const exec = createMockExec([["build", { stdout: "** BUILD SUCCEEDED **\n", code: 0 }]]);
+
+    registerBuildTool(mockPi as any, exec, "/project", state);
+    const tool = mockPi.getTool("xcode_build");
+    const ctx = createMockCtx();
+
+    await tool.execute("call-1", { project: "App.xcodeproj", scheme: "App" }, undefined, vi.fn(), ctx);
+
+    // updateStatusBar calls ui.setStatus — verify it rendered the scheme
+    expect(ctx.ui.setStatus).toHaveBeenCalledWith("xcode", expect.stringContaining("App"));
   });
 });
