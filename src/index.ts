@@ -583,16 +583,35 @@ export default function (pi: ExtensionAPI) {
         return;
       }
 
+      // Stop any active operation first
+      if (state.appStatus !== "idle") {
+        await stopActiveOperation(exec, ctx.cwd, state, ctx.ui);
+      }
+
       const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
 
       // Package.swift → swift package clean
       if (state.activeProject.type === "package") {
-        ctx.ui.notify("Cleaning package...", "info");
-        const result = await exec("swift", ["package", "clean"], { timeout: 120_000, cwd: xcodeArgs.execCwd });
-        ctx.ui.notify(
-          result.code === 0 ? "✅ Clean succeeded." : `❌ Clean failed.\n${result.stderr}`,
-          result.code === 0 ? "info" : "error",
-        );
+        state.appStatus = "cleaning";
+        startSpinner(ctx.cwd, state, ctx.ui);
+        const signal = startOperation(state, "Clean package");
+        try {
+          ctx.ui.notify("Cleaning package...", "info");
+          const result = await exec("swift", ["package", "clean"], {
+            signal,
+            timeout: 120_000,
+            cwd: xcodeArgs.execCwd,
+          });
+          ctx.ui.notify(
+            result.code === 0 ? "✅ Clean succeeded." : `❌ Clean failed.\n${result.stderr}`,
+            result.code === 0 ? "info" : "error",
+          );
+        } finally {
+          clearOperation(state);
+          stopSpinner(state);
+          state.appStatus = "idle";
+          updateStatusBar(ctx.cwd, state, ctx.ui);
+        }
         return;
       }
 
@@ -603,12 +622,22 @@ export default function (pi: ExtensionAPI) {
         scheme,
       });
 
-      ctx.ui.notify(`Cleaning ${scheme ?? "project"}...`, "info");
-      const result = await exec("xcodebuild", args, { timeout: 120_000, cwd: xcodeArgs.execCwd });
-      ctx.ui.notify(
-        result.code === 0 ? "✅ Clean succeeded." : `❌ Clean failed.\n${result.stderr}`,
-        result.code === 0 ? "info" : "error",
-      );
+      state.appStatus = "cleaning";
+      startSpinner(ctx.cwd, state, ctx.ui);
+      const signal = startOperation(state, `Clean ${scheme ?? "project"}`);
+      try {
+        ctx.ui.notify(`Cleaning ${scheme ?? "project"}...`, "info");
+        const result = await exec("xcodebuild", args, { signal, timeout: 120_000, cwd: xcodeArgs.execCwd });
+        ctx.ui.notify(
+          result.code === 0 ? "✅ Clean succeeded." : `❌ Clean failed.\n${result.stderr}`,
+          result.code === 0 ? "info" : "error",
+        );
+      } finally {
+        clearOperation(state);
+        stopSpinner(state);
+        state.appStatus = "idle";
+        updateStatusBar(ctx.cwd, state, ctx.ui);
+      }
     },
   });
 

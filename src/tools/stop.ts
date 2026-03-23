@@ -95,6 +95,7 @@ export async function stopActiveOperation(
         running: "running app",
         building: "build",
         testing: "tests",
+        cleaning: "clean",
       };
       label = statusLabels[previousStatus] ?? previousStatus;
     }
