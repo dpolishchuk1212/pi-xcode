@@ -6,8 +6,9 @@ import {
   discoverProjects,
   discoverSchemes,
   discoverSimulators,
+  findSimulator,
 } from "../src/discovery.js";
-import type { DiscoveryResult, ExecFn, ExecResult } from "../src/types.js";
+import type { DiscoveryResult, ExecFn, ExecResult, Simulator } from "../src/types.js";
 
 // ── Helper: create a mock exec ─────────────────────────────────────────────
 
@@ -258,5 +259,44 @@ describe("autoSelect", () => {
     const { project, scheme } = autoSelect({ projects: [], schemes: [], simulators: [] });
     expect(project).toBeUndefined();
     expect(scheme).toBeUndefined();
+  });
+});
+
+// ── findSimulator ──────────────────────────────────────────────────────────
+
+describe("findSimulator", () => {
+  const simulators: Simulator[] = [
+    { udid: "UUID-1", name: "iPhone 15", runtime: "iOS.17.5", state: "Shutdown", isAvailable: true },
+    { udid: "UUID-2", name: "iPhone 16", runtime: "iOS.18.0", state: "Shutdown", isAvailable: true },
+    { udid: "UUID-3", name: "iPhone 16", runtime: "iOS.18.0", state: "Booted", isAvailable: true },
+    { udid: "UUID-4", name: "iPad Pro", runtime: "iOS.18.0", state: "Shutdown", isAvailable: true },
+  ];
+
+  it("finds by UDID", () => {
+    const sim = findSimulator(simulators, "UUID-1");
+    expect(sim?.name).toBe("iPhone 15");
+  });
+
+  it("finds by name, preferring booted", () => {
+    const sim = findSimulator(simulators, "iPhone 16");
+    expect(sim?.udid).toBe("UUID-3"); // booted one
+  });
+
+  it("defaults to latest booted iPhone", () => {
+    const sim = findSimulator(simulators);
+    expect(sim?.udid).toBe("UUID-3");
+  });
+
+  it("defaults to latest iPhone if none booted", () => {
+    const notBooted: Simulator[] = [
+      { udid: "UUID-1", name: "iPhone 15", runtime: "iOS.17.5", state: "Shutdown", isAvailable: true },
+      { udid: "UUID-2", name: "iPhone 16", runtime: "iOS.18.0", state: "Shutdown", isAvailable: true },
+    ];
+    const sim = findSimulator(notBooted);
+    expect(sim?.udid).toBe("UUID-2"); // latest runtime
+  });
+
+  it("returns undefined for empty list", () => {
+    expect(findSimulator([])).toBeUndefined();
   });
 });

@@ -356,6 +356,7 @@ export function updateStatusBar(cwd: string, state: XcodeState, ui: Pick<Resolve
     const statusConfig: Record<string, { color: string; label: string }> = {
       building: { color: "warning", label: "Building" },
       testing: { color: "warning", label: "Testing" },
+      profiling: { color: "warning", label: "Profiling" },
       running: { color: "accent", label: "Running" },
     };
     const config = statusConfig[state.appStatus] ?? { color: "dim", label: state.appStatus };

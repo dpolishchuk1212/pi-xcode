@@ -35,6 +35,9 @@ import {
 import { clearOperation, createState, startOperation } from "./state.js";
 import { createBuildExec, createTestExec } from "./streaming.js";
 import { registerBuildTool } from "./tools/build.js";
+import { registerCleanTool } from "./tools/clean.js";
+import { registerDiscoverTool } from "./tools/discover.js";
+import { registerProfileTool } from "./tools/profile.js";
 import { registerRunTool } from "./tools/run.js";
 import { registerStopTool, stopActiveOperation } from "./tools/stop.js";
 import { registerTestTool } from "./tools/test.js";
@@ -568,7 +571,7 @@ export default function (pi: ExtensionAPI) {
 
   // ── /stop command ─────────────────────────────────────────────────────
   pi.registerCommand("stop", {
-    description: "Stop the currently running build, test, or run operation",
+    description: "Stop the currently running build, test, run, or profile operation",
     handler: async (_args, ctx) => {
       const result = await stopActiveOperation(exec, ctx.cwd, state, ctx.ui);
       ctx.ui.notify(result.content[0].text, result.details.stopped ? "info" : "error");
@@ -579,12 +582,23 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     sessionCwd = ctx.cwd;
     registerBuildTool(pi, exec, sessionCwd, state);
+    registerCleanTool(pi, exec, sessionCwd, state);
+    registerDiscoverTool(pi, exec, sessionCwd);
     registerRunTool(pi, exec, sessionCwd, state);
     registerTestTool(pi, exec, sessionCwd, state);
+    registerProfileTool(pi, exec, sessionCwd, state);
     registerStopTool(pi, exec, sessionCwd, state);
 
     // Replace built-in xcode tools with our versions
-    const builtInXcodeTools = ["xcode_build", "xcode_clean", "xcode_discover", "xcode_run", "xcode_test", "xcode_stop"];
+    const builtInXcodeTools = [
+      "xcode_build",
+      "xcode_clean",
+      "xcode_discover",
+      "xcode_run",
+      "xcode_test",
+      "xcode_profile",
+      "xcode_stop",
+    ];
     const currentTools = pi.getActiveTools();
     const withoutBuiltIn = currentTools.filter((t) => !builtInXcodeTools.includes(t));
     pi.setActiveTools([...withoutBuiltIn, ...builtInXcodeTools]);

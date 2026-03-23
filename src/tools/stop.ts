@@ -23,10 +23,12 @@ export function registerStopTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
     name: "xcode_stop",
     label: "Xcode Stop",
     description:
-      "Stop the currently running Xcode operation (build, test, or run). " +
+      "Stop the currently running Xcode operation (build, test, run, or profile). " +
       "Interrupts the active process and resets status to idle.",
-    promptSnippet: "Stop the currently running Xcode build, test, or run operation",
-    promptGuidelines: ["Use xcode_stop to interrupt any running xcode_build, xcode_test, or xcode_run operation."],
+    promptSnippet: "Stop the currently running Xcode build, test, run, or profile operation",
+    promptGuidelines: [
+      "Use xcode_stop to interrupt any running xcode_build, xcode_test, xcode_run, or xcode_profile operation.",
+    ],
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
@@ -95,6 +97,7 @@ export async function stopActiveOperation(
         running: "running app",
         building: "build",
         testing: "tests",
+        profiling: "profiling",
       };
       label = statusLabels[previousStatus] ?? previousStatus;
     }

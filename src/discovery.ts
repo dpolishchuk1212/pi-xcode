@@ -361,26 +361,22 @@ export function autoSelect(
 /**
  * Find a simulator by name or UDID. Prefers booted simulators.
  */
-/**
- * Find a destination by name or UDID across all available destinations
- * (simulators, physical devices, Mac). Fuzzy-matches against name.
- */
-export function findDestination(destinations: Destination[], nameOrUdid: string): Destination | undefined {
-  // Exact UDID match
-  const byId = destinations.find((d) => d.id === nameOrUdid);
-  if (byId) return byId;
+export function findSimulator(simulators: Simulator[], nameOrUdid?: string): Simulator | undefined {
+  if (nameOrUdid) {
+    // Exact UDID match
+    const byUdid = simulators.find((s) => s.udid === nameOrUdid);
+    if (byUdid) return byUdid;
 
-  // Exact name match
-  const byName = destinations.find((d) => d.name === nameOrUdid);
-  if (byName) return byName;
+    // Name match (prefer booted)
+    const byName = simulators.filter((s) => s.name === nameOrUdid);
+    return byName.find((s) => s.state === "Booted") ?? byName[0];
+  }
 
-  // Case-insensitive substring match (e.g. "iphone" matches "iPhone 16 Pro")
-  const lower = nameOrUdid.toLowerCase();
-  const matches = destinations.filter((d) => d.name.toLowerCase().includes(lower));
+  // Default: latest iPhone, prefer booted
+  const iphones = simulators.filter((s) => s.name.startsWith("iPhone"));
+  const booted = iphones.find((s) => s.state === "Booted");
+  if (booted) return booted;
 
-  // Prefer physical devices over simulators when ambiguous
-  const physical = matches.find((d) => !d.platform.includes("Simulator") && d.platform !== "macOS");
-  if (physical) return physical;
-
-  return matches[0];
+  // Sort by runtime descending to get latest
+  return iphones.sort((a, b) => b.runtime.localeCompare(a.runtime))[0];
 }

@@ -1,7 +1,12 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs } from "../commands.js";
-import { findDestination } from "../discovery.js";
+import {
+  buildBuildArgs,
+  buildDestinationString,
+  buildShowSettingsArgs,
+  buildSimulatorDestination,
+} from "../commands.js";
+import { discoverSimulators, findSimulator } from "../discovery.js";
 import { formatBuildResult } from "../format.js";
 import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
 import {
@@ -31,24 +36,21 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
     name: "xcode_run",
     label: "Xcode Run",
     description:
-      "Build, install, and launch an app on a device. " +
+      "Build, install, and launch an app on the target destination (simulator, physical device, or Mac). " +
       "Auto-discovers project, workspace, scheme, and destination when not specified.",
-    promptSnippet: "Build and run an iOS/macOS app on a simulator, physical device, or Mac",
+    promptSnippet: "Build and run an iOS/macOS app on the active destination",
     promptGuidelines: [
-      "Use xcode_run to build and launch apps.",
-      "Omit all parameters to use the active project, scheme, configuration, and destination.",
-      "Use `device` to target a specific device by name (e.g. 'iPhone 16', 'My Mac', or a physical device name). Matches simulators and connected physical devices.",
+      "Use xcode_run to build and launch apps on the active destination.",
+      "Omit parameters to use the active project, scheme, configuration, and destination.",
+      "Use the `simulator` parameter as a shorthand to target a specific simulator by name or UDID.",
     ],
     parameters: Type.Object({
       project: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
       workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
       scheme: Type.Optional(Type.String({ description: "Build scheme (auto-discovered if omitted)" })),
       configuration: Type.Optional(Type.String({ description: "Debug or Release (default: Debug)" })),
-      device: Type.Optional(
-        Type.String({
-          description:
-            "Target device name or UDID — matches simulators and connected physical devices (e.g. 'iPhone 16 Pro', 'My iPhone'). Uses active destination if omitted.",
-        }),
+      simulator: Type.Optional(
+        Type.String({ description: "Simulator name or UDID (shorthand for simulator destination)" }),
       ),
       skipBuild: Type.Optional(Type.Boolean({ description: "Skip the build step (default: false)" })),
     }),
@@ -70,21 +72,30 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       let dest: Destination | undefined;
       let destinationStr: string | undefined;
 
-      if (params.device) {
-        // Explicit device name/UDID → search all available destinations
-        dest = findDestination(state.availableDestinations, params.device);
-        if (!dest) {
-          const available = state.availableDestinations.map((d) => d.name).join(", ");
-          throw new Error(`Device "${params.device}" not found. Available: ${available}`);
+      if (params.simulator) {
+        // Explicit simulator shorthand → find the simulator
+        const simulators = await discoverSimulators(exec);
+        const sim = findSimulator(simulators, params.simulator);
+        if (!sim) {
+          throw new Error(
+            `Simulator "${params.simulator}" not found. Available: ${simulators.map((s) => s.name).join(", ")}`,
+          );
         }
-        destinationStr = buildDestinationString(dest);
+        dest = {
+          platform: "iOS Simulator",
+          id: sim.udid,
+          name: sim.name,
+          os: sim.runtime.replace(/.*\./, "").replace(/-/g, "."),
+          arch: "arm64",
+        };
+        destinationStr = buildSimulatorDestination(sim.udid);
       } else if (state.activeDestination) {
         dest = state.activeDestination;
         destinationStr = buildDestinationString(dest);
       }
 
       if (!dest) {
-        throw new Error("No destination available. Use /destination to select one, or pass a device name.");
+        throw new Error("No destination available. Use /destination to select one, or pass a simulator name.");
       }
 
       const destLabel = formatDestinationLabel(dest);
