@@ -10,7 +10,13 @@ import {
   SelectList,
   truncateToWidth,
 } from "@mariozechner/pi-tui";
-import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs, buildTestArgs } from "./commands.js";
+import {
+  buildBuildArgs,
+  buildCleanArgs,
+  buildDestinationString,
+  buildShowSettingsArgs,
+  buildTestArgs,
+} from "./commands.js";
 import { discoverProjects } from "./discovery.js";
 import { formatBuildResult } from "./format.js";
 import { parseAppPath, parseBuildResult, parseBundleId, parseTestResult } from "./parsers.js";
@@ -568,9 +574,47 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // ── /clean command ────────────────────────────────────────────────────
+  pi.registerCommand("clean", {
+    description: "Clean build artifacts for the active project",
+    handler: async (_args, ctx) => {
+      if (!state.activeProject) {
+        ctx.ui.notify("No active project. Use /project first.", "error");
+        return;
+      }
+
+      const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
+
+      // Package.swift → swift package clean
+      if (state.activeProject.type === "package") {
+        ctx.ui.notify("Cleaning package...", "info");
+        const result = await exec("swift", ["package", "clean"], { timeout: 120_000, cwd: xcodeArgs.execCwd });
+        ctx.ui.notify(
+          result.code === 0 ? "✅ Clean succeeded." : `❌ Clean failed.\n${result.stderr}`,
+          result.code === 0 ? "info" : "error",
+        );
+        return;
+      }
+
+      const scheme = state.activeScheme?.name;
+      const args = buildCleanArgs({
+        project: xcodeArgs.projectFlag,
+        workspace: xcodeArgs.workspaceFlag,
+        scheme,
+      });
+
+      ctx.ui.notify(`Cleaning ${scheme ?? "project"}...`, "info");
+      const result = await exec("xcodebuild", args, { timeout: 120_000, cwd: xcodeArgs.execCwd });
+      ctx.ui.notify(
+        result.code === 0 ? "✅ Clean succeeded." : `❌ Clean failed.\n${result.stderr}`,
+        result.code === 0 ? "info" : "error",
+      );
+    },
+  });
+
   // ── /stop command ─────────────────────────────────────────────────────
   pi.registerCommand("stop", {
-    description: "Stop the currently running build, test, run, or profile operation",
+    description: "Stop the currently running build, test, or run operation",
     handler: async (_args, ctx) => {
       const result = await stopActiveOperation(exec, ctx.cwd, state, ctx.ui);
       ctx.ui.notify(result.content[0].text, result.details.stopped ? "info" : "error");
