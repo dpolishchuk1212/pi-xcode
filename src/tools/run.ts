@@ -34,7 +34,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
     promptSnippet: "Build and run an iOS/macOS app on the active destination",
     promptGuidelines: [
       "Use xcode_run to build and launch apps on the active destination.",
-      "Use active project, scheme, configuration, and destination if user doesn't specify others explicidly",
+      "Use active project, scheme, configuration, and destination if user doesn't specify others explicitly",
     ],
     parameters: Type.Object({
       project: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),

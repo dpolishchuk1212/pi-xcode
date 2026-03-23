@@ -19,7 +19,7 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
     promptSnippet: "Build an Xcode project, workspace or package returning parsed errors and warnings",
     promptGuidelines: [
       "Use xcode_build to compile Xcode projects",
-      "Use active project, scheme, configuration, and destination if user doesn't specify others explicidly",
+      "Use active project, scheme, configuration, and destination if user doesn't specify others explicitly",
     ],
     parameters: Type.Object({
       project: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
