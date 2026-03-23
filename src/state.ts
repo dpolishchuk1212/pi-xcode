@@ -12,10 +12,10 @@ export interface XcodeState {
   availableDestinations: Destination[];
   activeConfiguration: string | undefined;
   availableConfigurations: string[];
-  appStatus: "idle" | "building" | "running" | "testing" | "profiling";
+  appStatus: "idle" | "building" | "running" | "testing";
   /** Cleanup function to stop the current app lifecycle monitor. */
   stopAppMonitor: (() => void) | undefined;
-  /** AbortController for the currently active operation (build/test/run/profile). */
+  /** AbortController for the currently active operation (build/test/run). */
   activeAbortController: AbortController | undefined;
   /** Label describing the currently active operation (for stop messages). */
   activeOperationLabel: string | undefined;

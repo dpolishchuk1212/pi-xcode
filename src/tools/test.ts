@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { buildDestinationString, buildSimulatorDestination, buildTestArgs } from "../commands.js";
+import { buildDestinationString, buildTestArgs } from "../commands.js";
 import { formatTestResult } from "../format.js";
 import { parseTestResult } from "../parsers.js";
 import {
@@ -31,8 +31,12 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
       scheme: Type.Optional(Type.String({ description: "Build scheme (auto-discovered if omitted)" })),
       configuration: Type.Optional(Type.String({ description: "Debug or Release (default: Debug)" })),
-      destination: Type.Optional(Type.String({ description: "Build destination" })),
-      simulator: Type.Optional(Type.String({ description: "Simulator name or UDID" })),
+      device: Type.Optional(
+        Type.String({
+          description:
+            "Target device name or UDID — matches simulators and connected physical devices. Uses active destination if omitted.",
+        }),
+      ),
       testPlan: Type.Optional(Type.String({ description: "Test plan to use" })),
       onlyTesting: Type.Optional(
         Type.Array(Type.String(), { description: "Run only these tests (e.g. 'MyTests/testFoo')" }),
@@ -53,9 +57,18 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
 
       // ── Resolve destination ──────────────────────────────────────────
-      let destination = params.destination;
-      if (!destination && params.simulator) {
-        destination = buildSimulatorDestination(params.simulator);
+      let destination: string | undefined;
+
+      if (params.device) {
+        const dest = state.availableDestinations.find(
+          (d) =>
+            d.name === params.device ||
+            d.id === params.device ||
+            d.name.toLowerCase().includes(params.device!.toLowerCase()),
+        );
+        if (dest) {
+          destination = buildDestinationString(dest);
+        }
       }
       if (!destination && state.activeDestination) {
         destination = buildDestinationString(state.activeDestination);

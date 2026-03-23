@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { buildBuildArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
+import { buildBuildArgs, buildDestinationString } from "../commands.js";
 import { formatBuildResult } from "../format.js";
 import { parseBuildResult } from "../parsers.js";
 import {
@@ -25,16 +25,19 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
     promptGuidelines: [
       "Use xcode_build to compile Xcode projects. Omit project/workspace/scheme to auto-discover them.",
       "Specify configuration as 'Debug' or 'Release'. Default is 'Debug'.",
+      "Use `device` to target a specific device by name. Uses active destination if omitted.",
     ],
     parameters: Type.Object({
       project: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
       workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
       scheme: Type.Optional(Type.String({ description: "Build scheme (auto-discovered if omitted)" })),
       configuration: Type.Optional(Type.String({ description: "Debug or Release (default: Debug)" })),
-      destination: Type.Optional(
-        Type.String({ description: "Build destination, e.g. 'platform=iOS Simulator,name=iPhone 16'" }),
+      device: Type.Optional(
+        Type.String({
+          description:
+            "Target device name or UDID — matches simulators and connected physical devices. Uses active destination if omitted.",
+        }),
       ),
-      simulator: Type.Optional(Type.String({ description: "Simulator name or UDID (builds for this simulator)" })),
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
@@ -50,12 +53,20 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
 
       // ── Resolve destination ──────────────────────────────────────────
-      let destination = params.destination;
+      let destination: string | undefined;
       let destinationLabel: string | undefined;
 
-      if (!destination && params.simulator) {
-        destination = buildSimulatorDestination(params.simulator);
-        destinationLabel = params.simulator;
+      if (params.device) {
+        const dest = state.availableDestinations.find(
+          (d) =>
+            d.name === params.device ||
+            d.id === params.device ||
+            d.name.toLowerCase().includes(params.device!.toLowerCase()),
+        );
+        if (dest) {
+          destination = buildDestinationString(dest);
+          destinationLabel = formatDestinationLabel(dest);
+        }
       }
       if (!destination && state.activeDestination) {
         destination = buildDestinationString(state.activeDestination);
