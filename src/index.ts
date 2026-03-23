@@ -256,7 +256,7 @@ export default function (pi: ExtensionAPI) {
         return {
           value: d.id,
           label: isActive ? `${label} ★` : label,
-          description: d.platform,
+          description: `${d.platform}   ${d.id}`,
         };
       });
 
