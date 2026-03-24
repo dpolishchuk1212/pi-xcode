@@ -173,16 +173,59 @@ export async function launchApp(
   try {
     switch (type) {
       case "simulator": {
-        debug("simctl launch", dest.id, bundleId);
-        const result = await exec("xcrun", ["simctl", "launch", dest.id, bundleId], { signal, timeout: 30_000 });
-        if (result.code !== 0) {
-          debug("simctl launch failed:", result.stderr);
-          return { success: false, error: result.stderr };
+        // Retry launch up to 3 times — the simulator runtime may not be fully
+        // ready to host apps even after bootstatus reports booted (race with
+        // SpringBoard / launchd_sim initialisation).
+        const maxAttempts = 3;
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+          debug("simctl launch attempt", attempt, dest.id, bundleId);
+          const result = await exec("xcrun", ["simctl", "launch", dest.id, bundleId], { signal, timeout: 30_000 });
+          if (result.code !== 0) {
+            debug("simctl launch failed (attempt", attempt, "):", result.stderr);
+            if (attempt < maxAttempts) {
+              debug("retrying after 2s...");
+              await new Promise((r) => setTimeout(r, 2000));
+              continue;
+            }
+            return { success: false, error: result.stderr };
+          }
+
+          // simctl launch prints "com.example.App: 12345"
+          const pid = parsePidFromOutput(result.stdout);
+          debug("simctl launch returned pid:", pid);
+
+          // Verify the process is actually alive — simctl can return 0 + PID
+          // even when the app crashes immediately on launch.
+          if (pid) {
+            await new Promise((r) => setTimeout(r, 500));
+            const alive = await isProcessAlive(exec, pid);
+            if (alive) {
+              debug("post-launch verify: pid", pid, "is alive ✓");
+              return { success: true, pid };
+            }
+            debug("post-launch verify: pid", pid, "died immediately (attempt", attempt, ")");
+            if (attempt < maxAttempts) {
+              debug("retrying after 2s...");
+              await new Promise((r) => setTimeout(r, 2000));
+              continue;
+            }
+            return { success: false, error: "App launched but crashed immediately" };
+          }
+
+          // No PID parsed — try fallback lookup
+          debug("no PID from simctl output, attempting fallback pgrep");
+          const fallbackPid = await findProcessPid(exec, nodePath.basename(appPath, ".app"));
+          if (fallbackPid) {
+            debug("fallback PID found:", fallbackPid);
+            return { success: true, pid: fallbackPid };
+          }
+
+          // No PID at all — assume launch worked (simctl returned 0)
+          debug("warning: no PID available, assuming launch succeeded");
+          return { success: true, pid: undefined };
         }
-        // simctl launch prints "com.example.App: 12345"
-        const pid = parsePidFromOutput(result.stdout);
-        debug("simctl launch success, pid:", pid);
-        return { success: true, pid };
+        // Should not reach here, but satisfy TypeScript
+        return { success: false, error: "Launch failed after retries" };
       }
 
       case "device": {
