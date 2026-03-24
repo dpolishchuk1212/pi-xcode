@@ -99,6 +99,12 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
         debug("exit code:", result.code, "killed:", result.killed);
         debug("stdout length:", result.stdout.length, "stderr length:", result.stderr.length);
 
+        // Check for cancellation before parsing
+        if (result.killed || combinedSignal.aborted) {
+          debug("test cancelled (killed=%s, aborted=%s)", result.killed, combinedSignal.aborted);
+          throw new Error("Test cancelled by user.");
+        }
+
         const combined = `${result.stdout}\n${result.stderr}`;
 
         // Log last 3000 chars of output to see what xcodebuild actually printed

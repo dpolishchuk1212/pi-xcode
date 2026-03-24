@@ -88,6 +88,13 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
           cwd: xcodeArgs.execCwd,
         });
         debug("exit code:", result.code, "killed:", result.killed);
+
+        // Check for cancellation before parsing
+        if (result.killed || combinedSignal.aborted) {
+          debug("build cancelled (killed=%s, aborted=%s)", result.killed, combinedSignal.aborted);
+          throw new Error("Build cancelled by user.");
+        }
+
         const combined = `${result.stdout}\n${result.stderr}`;
         const buildResult = parseBuildResult(combined);
         debug("success:", buildResult.success, "issues:", buildResult.issues.length);

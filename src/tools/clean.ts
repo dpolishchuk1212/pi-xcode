@@ -51,6 +51,12 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
             timeout: 120_000,
             cwd: xcodeArgs.execCwd,
           });
+
+          if (result.killed || combinedSignal.aborted) {
+            debug("package clean cancelled");
+            throw new Error("Clean cancelled by user.");
+          }
+
           const success = result.code === 0;
           debug("package clean exit code:", result.code, "success:", success);
           return {
@@ -92,6 +98,12 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
           timeout: 120_000,
           cwd: xcodeArgs.execCwd,
         });
+
+        if (result.killed || combinedSignal.aborted) {
+          debug("clean cancelled");
+          throw new Error("Clean cancelled by user.");
+        }
+
         const success = result.code === 0;
         debug("clean exit code:", result.code, "success:", success);
 

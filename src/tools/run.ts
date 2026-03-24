@@ -130,6 +130,13 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
             cwd: xcodeArgs.execCwd,
           });
           debug("build exit code:", buildExec.code, "killed:", buildExec.killed);
+
+          // Check for cancellation before parsing
+          if (buildExec.killed || combinedSignal.aborted) {
+            debug("run cancelled during build (killed=%s, aborted=%s)", buildExec.killed, combinedSignal.aborted);
+            throw new Error("Run cancelled by user.");
+          }
+
           const buildOutput = `${buildExec.stdout}\n${buildExec.stderr}`;
           const buildResult = parseBuildResult(buildOutput);
           debug("build success:", buildResult.success, "issues:", buildResult.issues.length);
