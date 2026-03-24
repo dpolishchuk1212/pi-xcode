@@ -88,7 +88,7 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       try {
         debug("clean command: xcodebuild", args.join(" "));
         onUpdate?.({
-          content: [{ type: "text", text: `Cleaning: xcodebuild ${args.join(" ")}` }],
+          content: [{ type: "text", text: `Cleaning ${resolved.scheme ?? "project"}...` }],
           details: undefined,
         });
 

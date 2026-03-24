@@ -100,7 +100,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       const destType = destinationTypeLabel(dest);
       debug("destination:", destLabel, "type:", destType, "id:", dest.id);
 
-      const combinedSignal = startOperation(state, `Run ${resolved.scheme ?? "project"} on ${destLabel}`, signal);
+      const combinedSignal = startOperation(state, `Run ${resolved.scheme ?? "project"} (${configuration}) on ${destLabel}`, signal);
 
       try {
         // ── Build ────────────────────────────────────────────────────────

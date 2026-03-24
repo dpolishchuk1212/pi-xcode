@@ -4,7 +4,7 @@ import { buildDestinationString, buildSimulatorDestination, buildTestArgs } from
 import { formatTestResult } from "../format.js";
 import { createLogger } from "../log.js";
 import { parseTestResult } from "../parsers.js";
-import { getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
+import { formatDestinationLabel, getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
 import type { XcodeState } from "../state.js";
 import { clearOperation, startOperation } from "../state.js";
 import { startSpinner, stopSpinner, updateStatusBar } from "../status-bar.js";
@@ -79,15 +79,18 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       debug("destination:", destination);
       debug("configuration:", configuration);
 
+      const destLabel = state.activeDestination
+        ? ` on ${formatDestinationLabel(state.activeDestination)}`
+        : "";
       onUpdate?.({
-        content: [{ type: "text", text: `Running tests: xcodebuild ${args.join(" ")}` }],
+        content: [{ type: "text", text: `Testing ${resolved.scheme ?? "project"} (${configuration})${destLabel}...` }],
         details: undefined,
       });
 
       state.appStatus = "testing";
       startSpinner(cwd, state, ctx.ui);
 
-      const combinedSignal = startOperation(state, `Test ${resolved.scheme ?? "project"}`, signal);
+      const combinedSignal = startOperation(state, `Test ${resolved.scheme ?? "project"} (${configuration})${destLabel}`, signal);
 
       let testResult: TestResult | undefined;
       try {

@@ -391,7 +391,7 @@ export default function (pi: ExtensionAPI) {
       const destLabel = formatDestinationLabel(dest);
       const destType = destinationTypeLabel(dest);
 
-      const signal = startOperation(state, `Run ${scheme} on ${destLabel}`);
+      const signal = startOperation(state, `Run ${scheme} (${configuration}) on ${destLabel}`);
 
       try {
         // ── Build ──────────────────────────────────────────────────────
@@ -548,7 +548,7 @@ export default function (pi: ExtensionAPI) {
       startSpinner(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Testing ${state.activeScheme.name}${filterLabel}${planLabel} on ${destLabel}...`, "info");
 
-      const signal = startOperation(state, `Test ${state.activeScheme.name}${filterLabel}${planLabel}`);
+      const signal = startOperation(state, `Test ${state.activeScheme.name} (${configuration})${filterLabel}${planLabel}`);
       try {
         const testExec = createTestExec(state);
         const result = await testExec("xcodebuild", testArgs, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });

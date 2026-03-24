@@ -245,19 +245,24 @@ export async function discoverConfigurations(exec: ExecFn, projectPath: string):
     const baseName = nodePath.basename(projectPath, ".xcworkspace");
     const siblingProj = nodePath.join(dir, `${baseName}.xcodeproj`);
 
-    try {
-      await exec("test", ["-d", siblingProj], { timeout: 3000 });
+    const testResult = await exec("test", ["-d", siblingProj], { timeout: 3000 });
+    if (testResult.code === 0) {
       listPath = siblingProj;
-    } catch {
+      debug("discoverConfigurations using sibling project:", siblingProj);
+    } else {
       // No sibling project — try to find any .xcodeproj in the same directory
+      debug("discoverConfigurations no sibling .xcodeproj, searching in:", dir);
       const findResult = await exec("find", [dir, "-maxdepth", "1", "-name", "*.xcodeproj", "-type", "d"], {
         timeout: 5000,
       });
       const found = findResult.stdout.trim().split("\n").filter(Boolean);
       if (found.length > 0) {
         listPath = found[0];
+        debug("discoverConfigurations found fallback project:", listPath);
+      } else {
+        debug("discoverConfigurations no .xcodeproj found, falling back to defaults");
+        return ["Debug", "Release"];
       }
-      // If still a workspace, fall through — will likely return empty configs
     }
   }
 
