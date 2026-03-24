@@ -109,8 +109,12 @@ export function parseTestResult(output: string): TestResult {
   const failed = summaryMatch ? parseInt(summaryMatch[2], 10) : cases.filter((c) => !c.passed).length;
   const duration = summaryMatch ? parseFloat(summaryMatch[3]) : cases.reduce((s, c) => s + c.duration, 0);
 
+  // Detect build failure that prevented tests from running
+  const buildFailed = /\*\*\s*TEST FAILED\s*\*\*/.test(output) || /Testing cancelled because the build failed/.test(output);
+  const success = failed === 0 && !buildFailed;
+
   return {
-    success: failed === 0,
+    success,
     passed: total - failed,
     failed,
     total,

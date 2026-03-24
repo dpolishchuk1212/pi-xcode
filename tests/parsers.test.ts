@@ -206,6 +206,35 @@ Test Case '-[MyTests testB]' failed (0.002 seconds).`;
     expect(result.failed).toBe(1);
     expect(result.passed).toBe(1);
   });
+
+  it("detects build failure when no tests ran", () => {
+    const output = `/path/StatsReducerTests.swift:8:18: error: Unable to find module dependency: 'PostBoosts'
+@testable import PostBoosts
+                 ^
+Testing failed:
+    Unable to find module dependency: 'PostBoosts'
+    Testing cancelled because the build failed.
+
+** TEST FAILED **
+
+
+The following build commands failed:
+    SwiftDriver PostPageTests normal arm64 com.apple.xcode.tools.swift.compiler`;
+
+    const result = parseTestResult(output);
+    expect(result.success).toBe(false);
+    expect(result.total).toBe(0);
+    expect(result.failed).toBe(0);
+    expect(result.passed).toBe(0);
+  });
+
+  it("detects TEST FAILED even with passing test cases", () => {
+    const output = `Test Case '-[MyTests testA]' passed (0.001 seconds).
+** TEST FAILED **`;
+
+    const result = parseTestResult(output);
+    expect(result.success).toBe(false);
+  });
 });
 
 // ── Scheme list parsing ────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import type { BuildResult, TestResult } from "./types.js";
+import { parseBuildIssues } from "./parsers.js";
 
 /**
  * Format a build result into a human-readable string for the LLM.
@@ -46,6 +47,19 @@ export function formatTestResult(result: TestResult): string {
 
   if (result.success) {
     lines.push(`✅ ALL TESTS PASSED (${result.total} tests, ${result.duration.toFixed(3)}s)`);
+  } else if (!result.success && result.total === 0) {
+    lines.push("❌ BUILD FAILED — tests did not run");
+
+    // Extract build errors to show what went wrong
+    const issues = parseBuildIssues(result.rawOutput);
+    const errors = issues.filter((i) => i.severity === "error");
+    if (errors.length > 0) {
+      lines.push("");
+      lines.push(`Build errors (${errors.length}):`);
+      for (const e of errors) {
+        lines.push(`  ${e.file}:${e.line}:${e.column}: ${e.message}`);
+      }
+    }
   } else {
     lines.push(`❌ TESTS FAILED (${result.failed}/${result.total} failed, ${result.duration.toFixed(3)}s)`);
   }
