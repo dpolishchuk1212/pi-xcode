@@ -318,57 +318,5 @@ describe("xcode_run tool", () => {
     );
   });
 
-  it("finds simulator by name when simulator param is provided", async () => {
-    const state = createState();
-    state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
-    state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
 
-    const exec = createMockExec([
-      [
-        "simctl list",
-        {
-          stdout: JSON.stringify({
-            devices: {
-              "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
-                { udid: "FOUND-UUID", name: "iPhone 17 Pro", state: "Shutdown", isAvailable: true },
-              ],
-            },
-          }),
-        },
-      ],
-      ["-showBuildSettings", { stdout: BUILD_SETTINGS }],
-      [" build", { stdout: "** BUILD SUCCEEDED **\n" }],
-      ["simctl terminate", { code: 0 }],
-      ["simctl boot", { code: 0 }],
-      ["open -a Simulator", { code: 0 }],
-      ["simctl install", { code: 0 }],
-      ["simctl launch", { stdout: "com.test.App: 12345\n" }],
-      ["ps", { code: 0 }],
-    ]);
-
-    registerRunTool(mockPi as any, exec, "/project", state);
-    const tool = mockPi.getTool("xcode_run");
-    const ctx = createMockCtx();
-
-    const result = await tool.execute("call-1", { simulator: "iPhone 17 Pro" }, undefined, vi.fn(), ctx);
-    expect(result.details.success).toBe(true);
-  });
-
-  it("throws when simulator param does not match any simulator", async () => {
-    const state = createState();
-    state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
-    state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
-
-    const exec = createMockExec([
-      ["simctl list", { stdout: JSON.stringify({ devices: {} }) }],
-    ]);
-
-    registerRunTool(mockPi as any, exec, "/project", state);
-    const tool = mockPi.getTool("xcode_run");
-    const ctx = createMockCtx();
-
-    await expect(
-      tool.execute("call-1", { simulator: "NonExistent" }, undefined, vi.fn(), ctx),
-    ).rejects.toThrow(/not found/);
-  });
 });

@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { buildBuildArgs, buildDestinationString, buildSimulatorDestination } from "../commands.js";
+import { buildBuildArgs, buildDestinationString } from "../commands.js";
 import { formatBuildResult } from "../format.js";
 import { createLogger } from "../log.js";
 import { parseBuildResult } from "../parsers.js";
@@ -22,17 +22,11 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
     promptSnippet: "Build the active Xcode project returning parsed errors and warnings",
     promptGuidelines: [
       "Use xcode_build to compile the active Xcode project.",
-      "Destination and configuration can be overridden — only do so if the user explicitly asks.",
+      "Always uses the active project, scheme, configuration, and destination. Use /project, /scheme, /destination, /configuration commands to change them.",
     ],
-    parameters: Type.Object({
-      configuration: Type.Optional(Type.String({ description: "Debug or Release (default: active configuration)" })),
-      destination: Type.Optional(
-        Type.String({ description: "Build destination. Only pass if user explicitly requests a different destination." }),
-      ),
-      simulator: Type.Optional(Type.String({ description: "Simulator name or UDID. Only pass if user explicitly requests a different simulator." })),
-    }),
+    parameters: Type.Object({}),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, _params, signal, onUpdate, ctx) {
       // ── Validate active state ────────────────────────────────────────
       if (!state.activeProject || !state.activeScheme) {
         throw new Error("No active project or scheme. Use /project and /scheme to select one.");
@@ -42,21 +36,16 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
 
       const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
 
-      // ── Resolve destination ──────────────────────────────────────────
-      // Priority: explicit destination > explicit simulator > active destination
-      let destination = params.destination;
+      // ── Resolve destination from active state ────────────────────────
+      let destination: string | undefined;
       let destinationLabel: string | undefined;
 
-      if (!destination && params.simulator) {
-        destination = buildSimulatorDestination(params.simulator);
-        destinationLabel = params.simulator;
-      }
-      if (!destination && state.activeDestination) {
+      if (state.activeDestination) {
         destination = buildDestinationString(state.activeDestination);
         destinationLabel = formatDestinationLabel(state.activeDestination);
       }
 
-      const configuration = params.configuration ?? state.activeConfiguration ?? "Debug";
+      const configuration = state.activeConfiguration ?? "Debug";
 
       const args = buildBuildArgs({
         project: xcodeArgs.projectFlag,

@@ -231,31 +231,6 @@ describe("xcode_test tool", () => {
     );
   });
 
-  it("uses simulator param as destination", async () => {
-    const state = stateWithSimulator();
-    const exec = createMockExec([
-      ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
-    ]);
-
-    registerTestTool(mockPi as any, exec, "/project", state);
-    const tool = mockPi.getTool("xcode_test");
-    const ctx = createMockCtx();
-
-    await tool.execute(
-      "call-1",
-      { simulator: "iPhone 17" },
-      undefined,
-      vi.fn(),
-      ctx,
-    );
-
-    expect(exec).toHaveBeenCalledWith(
-      "xcodebuild",
-      expect.arrayContaining(["-destination", "platform=iOS Simulator,name=iPhone 17"]),
-      expect.anything(),
-    );
-  });
-
   it("throws when no active project or scheme", async () => {
     const exec = createMockExec([]);
 

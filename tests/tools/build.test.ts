@@ -160,30 +160,6 @@ describe("xcode_build tool", () => {
     );
   });
 
-  it("uses simulator param to override active destination", async () => {
-    const exec = createMockExec([["build", { stdout: "** BUILD SUCCEEDED **\n", code: 0 }]]);
-
-    const state = createActiveState();
-    registerBuildTool(mockPi as any, exec, "/project", state);
-    const tool = mockPi.getTool("xcode_build");
-    const ctx = createMockCtx();
-
-    const result = await tool.execute(
-      "call-1",
-      { simulator: "iPhone 17 Pro" },
-      undefined,
-      vi.fn(),
-      ctx,
-    );
-
-    expect(result.details.success).toBe(true);
-    expect(exec).toHaveBeenCalledWith(
-      "xcodebuild",
-      expect.arrayContaining(["-destination", "platform=iOS Simulator,name=iPhone 17 Pro"]),
-      expect.anything(),
-    );
-  });
-
   // ── appStatus lifecycle ────────────────────────────────────────────────
 
   it("sets appStatus to 'building' during the build", async () => {

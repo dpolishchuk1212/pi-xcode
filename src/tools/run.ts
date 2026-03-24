@@ -4,9 +4,7 @@ import {
   buildBuildArgs,
   buildDestinationString,
   buildShowSettingsArgs,
-  buildSimulatorDestination,
 } from "../commands.js";
-import { discoverSimulators, findSimulator } from "../discovery.js";
 import { formatBuildResult } from "../format.js";
 import { createLogger } from "../log.js";
 import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
@@ -38,13 +36,9 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
     promptSnippet: "Build and run the active iOS/macOS app on the active destination",
     promptGuidelines: [
       "Use xcode_run to build, install, and launch the active app on the active destination.",
-      "Simulator and configuration can be overridden — only do so if the user explicitly asks.",
+      "Always uses the active project, scheme, configuration, and destination. Use /project, /scheme, /destination, /configuration commands to change them.",
     ],
     parameters: Type.Object({
-      configuration: Type.Optional(Type.String({ description: "Debug or Release (default: active configuration)" })),
-      simulator: Type.Optional(
-        Type.String({ description: "Simulator name or UDID. Only pass if user explicitly requests a different simulator." }),
-      ),
       skipBuild: Type.Optional(Type.Boolean({ description: "Skip the build step (default: false)" })),
     }),
 
@@ -59,31 +53,13 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       debug("active project:", state.activeProject.path, "scheme:", state.activeScheme.name);
 
       const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
-      const configuration = params.configuration ?? state.activeConfiguration ?? "Debug";
+      const configuration = state.activeConfiguration ?? "Debug";
 
-      // ── Resolve destination ─────────────────────────────────────────
-      // Priority: explicit simulator > active destination
+      // ── Resolve destination from active state ───────────────────────
       let dest: Destination | undefined;
       let destinationStr: string | undefined;
 
-      if (params.simulator) {
-        // Explicit simulator shorthand → find the simulator
-        const simulators = await discoverSimulators(exec);
-        const sim = findSimulator(simulators, params.simulator);
-        if (!sim) {
-          throw new Error(
-            `Simulator "${params.simulator}" not found. Available: ${simulators.map((s) => s.name).join(", ")}`,
-          );
-        }
-        dest = {
-          platform: "iOS Simulator",
-          id: sim.udid,
-          name: sim.name,
-          os: sim.runtime.replace(/.*\./, "").replace(/-/g, "."),
-          arch: "arm64",
-        };
-        destinationStr = buildSimulatorDestination(sim.udid);
-      } else if (state.activeDestination) {
+      if (state.activeDestination) {
         dest = state.activeDestination;
         destinationStr = buildDestinationString(dest);
       }

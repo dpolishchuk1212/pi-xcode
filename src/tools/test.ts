@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { buildDestinationString, buildSimulatorDestination, buildTestArgs } from "../commands.js";
+import { buildDestinationString, buildTestArgs } from "../commands.js";
 import { formatTestResult } from "../format.js";
 import { createLogger } from "../log.js";
 import { parseTestResult } from "../parsers.js";
@@ -22,13 +22,10 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
     promptSnippet: "Run Xcode unit or UI tests and return structured pass/fail results",
     promptGuidelines: [
       "Use xcode_test to run unit or UI tests for the active project.",
-      "Destination and configuration can be overridden — only do so if the user explicitly asks.",
+      "Always uses the active project, scheme, configuration, and destination. Use /project, /scheme, /destination, /configuration commands to change them.",
       "Use onlyTesting to run a specific test class or method, e.g. 'MyAppTests/MyTests/testFoo'.",
     ],
     parameters: Type.Object({
-      configuration: Type.Optional(Type.String({ description: "Debug or Release (default: active configuration)" })),
-      destination: Type.Optional(Type.String({ description: "Build destination. Only pass if user explicitly requests a different destination." })),
-      simulator: Type.Optional(Type.String({ description: "Simulator name or UDID. Only pass if user explicitly requests a different simulator." })),
       testPlan: Type.Optional(Type.String({ description: "Test plan to use" })),
       onlyTesting: Type.Optional(
         Type.Array(Type.String(), { description: "Run only these tests (e.g. 'MyTests/testFoo')" }),
@@ -48,17 +45,13 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
       debug("xcodeArgs:", JSON.stringify(xcodeArgs));
 
-      // ── Resolve destination ──────────────────────────────────────────
-      // Priority: explicit destination > explicit simulator > active destination
-      let destination = params.destination;
-      if (!destination && params.simulator) {
-        destination = buildSimulatorDestination(params.simulator);
-      }
-      if (!destination && state.activeDestination) {
+      // ── Resolve destination from active state ────────────────────────
+      let destination: string | undefined;
+      if (state.activeDestination) {
         destination = buildDestinationString(state.activeDestination);
       }
 
-      const configuration = params.configuration ?? state.activeConfiguration ?? "Debug";
+      const configuration = state.activeConfiguration ?? "Debug";
 
       const args = buildTestArgs({
         project: xcodeArgs.projectFlag,
