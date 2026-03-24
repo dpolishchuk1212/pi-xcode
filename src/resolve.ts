@@ -5,10 +5,13 @@
 import nodePath from "node:path";
 import { pickBestDestination, pickBestScheme, projectBaseName } from "./auto-select.js";
 import { discoverConfigurations, discoverDestinations, discoverProjects, discoverSchemes } from "./discovery.js";
+import { createLogger } from "./log.js";
 import type { XcodeState } from "./state.js";
 import type { StatusBarUI } from "./status-bar.js";
 import { updateStatusBar } from "./status-bar.js";
 import type { Destination, ExecFn, XcodeProject } from "./types.js";
+
+const debug = createLogger("resolve");
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +51,8 @@ export async function resolveProjectAndScheme(
   ui: ResolveUI,
   explicitParams?: { project?: string; workspace?: string; scheme?: string },
 ): Promise<ResolvedProject> {
+  debug("resolving — explicit:", JSON.stringify(explicitParams ?? {}));
+
   // 1. Explicit params take priority
   if (explicitParams?.workspace || explicitParams?.project) {
     const projectPath = (explicitParams.workspace ?? explicitParams.project)!;
@@ -59,16 +64,19 @@ export async function resolveProjectAndScheme(
       schemeName = pickBestScheme(schemes, projectBaseName(projectPath))?.name;
     }
 
+    debug("resolved via explicit params → project:", projectPath, "type:", type, "scheme:", schemeName);
     return { project: { path: projectPath, type }, scheme: schemeName };
   }
 
   // 2. Active state (honour explicit scheme override if provided)
   if (state.activeProject) {
     const schemeName = explicitParams?.scheme ?? state.activeScheme?.name;
+    debug("resolved via active state → project:", state.activeProject.path, "scheme:", schemeName);
     return { project: state.activeProject, scheme: schemeName };
   }
 
   // 3. Auto-discover
+  debug("falling back to auto-discover");
   return discoverAndSelect(exec, cwd, state, ui);
 }
 
@@ -83,6 +91,7 @@ async function discoverAndSelect(
   ui: ResolveUI,
 ): Promise<ResolvedProject> {
   const projects = await discoverProjects(exec, cwd, 6);
+  debug("discoverAndSelect found", projects.length, "projects in", cwd);
 
   if (projects.length === 0) {
     throw new Error("No Xcode project, workspace, or Package.swift found in current directory or subdirectories.");
@@ -104,6 +113,7 @@ async function discoverAndSelect(
 
   // Save project to state
   state.activeProject = selectedProject;
+  debug("selected project:", selectedProject.path, "type:", selectedProject.type);
 
   // Auto-select scheme and destinations
   await refreshSchemes(exec, state, ui);
@@ -111,6 +121,7 @@ async function discoverAndSelect(
   // Update status bar
   updateStatusBar(cwd, state, ui);
 
+  debug("discoverAndSelect result → scheme:", state.activeScheme?.name, "destination:", state.activeDestination?.name);
   return { project: selectedProject, scheme: state.activeScheme?.name };
 }
 
@@ -133,9 +144,11 @@ export async function refreshSchemes(exec: ExecFn, state: XcodeState, ui: Status
 
   const schemes = await discoverSchemes(exec, state.activeProject.path);
   state.availableSchemes = schemes;
+  debug("refreshSchemes found", schemes.length, "schemes:", schemes.map(s => s.name).join(", "));
 
   // Auto-select: prefer app schemes matching project name, then any app, then non-test
   state.activeScheme = pickBestScheme(schemes, projectBaseName(state.activeProject.path));
+  debug("auto-selected scheme:", state.activeScheme?.name ?? "none", "productType:", state.activeScheme?.productType);
 
   // Refresh destinations and configurations in parallel
   await Promise.all([refreshDestinations(exec, state, ui), refreshConfigurations(exec, state)]);
@@ -156,10 +169,12 @@ export async function refreshConfigurations(exec: ExecFn, state: XcodeState): Pr
 
   const configs = await discoverConfigurations(exec, state.activeProject.path);
   state.availableConfigurations = configs;
+  debug("refreshConfigurations found:", configs.join(", "));
 
   // Auto-select: prefer "Debug", then first
   const best = configs.find((c) => c === "Debug") ?? configs[0];
   state.activeConfiguration = best;
+  debug("auto-selected configuration:", best);
 }
 
 // ── Destination helpers ────────────────────────────────────────────────────
@@ -177,10 +192,12 @@ export async function refreshDestinations(exec: ExecFn, state: XcodeState, _ui: 
 
   const destinations = await discoverDestinations(exec, state.activeProject, state.activeScheme.name);
   state.availableDestinations = destinations;
+  debug("refreshDestinations found", destinations.length, "destinations");
 
   // Auto-select best destination
   const best = pickBestDestination(destinations);
   state.activeDestination = best;
+  debug("auto-selected destination:", best ? `${best.name} (${best.platform}, ${best.id})` : "none");
 }
 
 /**

@@ -4,7 +4,10 @@
  */
 
 import nodePath from "node:path";
+import { createLogger } from "./log.js";
 import type { Destination, ExecFn } from "./types.js";
+
+const debug = createLogger("runner");
 
 // ── Destination classification ─────────────────────────────────────────────
 
@@ -32,14 +35,17 @@ export async function terminateApp(
   _appPath?: string,
 ): Promise<void> {
   const type = classifyDestination(dest);
+  debug("terminateApp bundleId:", bundleId, "type:", type, "destId:", dest.id);
 
   try {
     switch (type) {
       case "simulator":
+        debug("simctl terminate", dest.id, bundleId);
         await exec("xcrun", ["simctl", "terminate", dest.id, bundleId], { timeout: 10_000 });
         break;
 
       case "mac": {
+        debug("osascript quit", bundleId);
         // Use AppleScript to quit by bundle ID — works for any macOS app
         await exec("osascript", ["-e", `tell application id "${bundleId}" to quit`], { timeout: 5_000 });
         // Give it a moment to shut down
@@ -48,11 +54,14 @@ export async function terminateApp(
       }
 
       case "device":
+        debug("device terminate skipped (devicectl replaces on launch)");
         // devicectl doesn't have a clean terminate-by-bundleId;
         // the new launch will replace the existing instance
         break;
     }
+    debug("terminateApp completed");
   } catch {
+    debug("terminateApp ignored error (app might not be running)");
     // Ignore — app might not be running
   }
 }
@@ -65,16 +74,23 @@ export async function terminateApp(
  * For devices/Mac: no-op.
  */
 export async function ensureDestinationReady(exec: ExecFn, dest: Destination): Promise<void> {
-  if (classifyDestination(dest) !== "simulator") return;
+  if (classifyDestination(dest) !== "simulator") {
+    debug("ensureDestinationReady: skipped (not simulator)");
+    return;
+  }
 
   // Try to boot — simctl returns non-zero if already booted, which we ignore
+  debug("booting simulator:", dest.id, dest.name);
   try {
     await exec("xcrun", ["simctl", "boot", dest.id], { timeout: 30_000 });
+    debug("simulator booted");
   } catch {
+    debug("simulator boot skipped (already booted or non-fatal error)");
     // Already booted or other non-fatal error
   }
 
   // Open Simulator.app so the user can see it
+  debug("opening Simulator.app");
   await exec("open", ["-a", "Simulator"], { timeout: 5_000 });
 }
 
@@ -93,20 +109,26 @@ export async function installApp(
   signal?: AbortSignal,
 ): Promise<void> {
   const type = classifyDestination(dest);
+  debug("installApp type:", type, "appPath:", appPath, "destId:", dest.id);
 
   switch (type) {
     case "simulator":
+      debug("simctl install", dest.id, appPath);
       await exec("xcrun", ["simctl", "install", dest.id, appPath], { signal, timeout: 60_000 });
+      debug("simctl install completed");
       break;
 
     case "device":
+      debug("devicectl install", dest.id, appPath);
       await exec("xcrun", ["devicectl", "device", "install", "app", "--device", dest.id, appPath], {
         signal,
         timeout: 120_000,
       });
+      debug("devicectl install completed");
       break;
 
     case "mac":
+      debug("mac install skipped (runs from build dir)");
       // No install needed — app runs directly from build products
       break;
   }
@@ -135,45 +157,56 @@ export async function launchApp(
   signal?: AbortSignal,
 ): Promise<LaunchResult> {
   const type = classifyDestination(dest);
+  debug("launchApp bundleId:", bundleId, "type:", type, "destId:", dest.id);
 
   try {
     switch (type) {
       case "simulator": {
+        debug("simctl launch", dest.id, bundleId);
         const result = await exec("xcrun", ["simctl", "launch", dest.id, bundleId], { signal, timeout: 30_000 });
         if (result.code !== 0) {
+          debug("simctl launch failed:", result.stderr);
           return { success: false, error: result.stderr };
         }
         // simctl launch prints "com.example.App: 12345"
         const pid = parsePidFromOutput(result.stdout);
+        debug("simctl launch success, pid:", pid);
         return { success: true, pid };
       }
 
       case "device": {
+        debug("devicectl launch", dest.id, bundleId);
         const result = await exec(
           "xcrun",
           ["devicectl", "device", "process", "launch", "--device", dest.id, bundleId],
           { signal, timeout: 30_000 },
         );
         if (result.code !== 0) {
+          debug("devicectl launch failed:", result.stderr);
           return { success: false, error: result.stderr };
         }
         // devicectl may print PID in output — best effort parse
         const pid = parsePidFromOutput(`${result.stdout}\n${result.stderr}`);
+        debug("devicectl launch success, pid:", pid);
         return { success: true, pid };
       }
 
       case "mac": {
+        debug("open", appPath);
         const result = await exec("open", [appPath], { signal, timeout: 10_000 });
         if (result.code !== 0) {
+          debug("open failed:", result.stderr);
           return { success: false, error: result.stderr };
         }
         // Find PID via pgrep using the app's executable name
         const appName = nodePath.basename(appPath, ".app");
         const pid = await findProcessPid(exec, appName);
+        debug("open success, pid:", pid);
         return { success: true, pid };
       }
     }
   } catch (e) {
+    debug("launchApp error:", String(e));
     return { success: false, error: String(e) };
   }
 }
@@ -188,10 +221,13 @@ export async function launchApp(
 export function monitorAppLifecycle(exec: ExecFn, pid: number, onExit: () => void, intervalMs = 1000): () => void {
   let stopped = false;
 
+  debug("monitorAppLifecycle started for pid:", pid, "interval:", intervalMs, "ms");
+
   const check = async () => {
     if (stopped) return;
     const alive = await isProcessAlive(exec, pid);
     if (!alive && !stopped) {
+      debug("monitorAppLifecycle: pid", pid, "exited");
       stopped = true;
       clearInterval(timer);
       onExit();

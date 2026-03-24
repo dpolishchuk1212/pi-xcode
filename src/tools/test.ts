@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { buildDestinationString, buildSimulatorDestination, buildTestArgs } from "../commands.js";
 import { formatTestResult } from "../format.js";
+import { createLogger } from "../log.js";
 import { parseTestResult } from "../parsers.js";
 import { getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
 import type { XcodeState } from "../state.js";
@@ -9,6 +10,8 @@ import { clearOperation, startOperation } from "../state.js";
 import { startSpinner, stopSpinner, updateStatusBar } from "../status-bar.js";
 import { createTestExec } from "../streaming.js";
 import type { ExecFn, TestResult } from "../types.js";
+
+const debug = createLogger("test");
 
 export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
@@ -39,16 +42,16 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
 
       // ── Resolve project and scheme ───────────────────────────────────
-      console.log("[xcode_test] params:", JSON.stringify(params));
+      debug("params:", JSON.stringify(params));
       const resolved = await resolveProjectAndScheme(exec, cwd, state, ctx.ui, {
         project: params.project,
         workspace: params.workspace,
         scheme: params.scheme,
       });
-      console.log("[xcode_test] resolved project:", resolved.project.path, "scheme:", resolved.scheme);
+      debug("resolved project:", resolved.project.path, "scheme:", resolved.scheme);
 
       const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
-      console.log("[xcode_test] xcodeArgs:", JSON.stringify(xcodeArgs));
+      debug("xcodeArgs:", JSON.stringify(xcodeArgs));
 
       // ── Resolve destination ──────────────────────────────────────────
       let destination = params.destination;
@@ -72,9 +75,9 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
         skipTesting: params.skipTesting,
       });
 
-      console.log("[xcode_test] full command: xcodebuild", args.join(" "));
-      console.log("[xcode_test] destination:", destination);
-      console.log("[xcode_test] configuration:", configuration);
+      debug("full command: xcodebuild", args.join(" "));
+      debug("destination:", destination);
+      debug("configuration:", configuration);
 
       onUpdate?.({
         content: [{ type: "text", text: `Running tests: xcodebuild ${args.join(" ")}` }],
@@ -94,23 +97,23 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
           timeout: 1_200_000,
           cwd: xcodeArgs.execCwd,
         });
-        console.log("[xcode_test] exit code:", result.code, "killed:", result.killed);
-        console.log("[xcode_test] stdout length:", result.stdout.length, "stderr length:", result.stderr.length);
+        debug("exit code:", result.code, "killed:", result.killed);
+        debug("stdout length:", result.stdout.length, "stderr length:", result.stderr.length);
 
         const combined = `${result.stdout}\n${result.stderr}`;
 
         // Log last 3000 chars of output to see what xcodebuild actually printed
-        console.log("[xcode_test] --- RAW OUTPUT (last 3000 chars) ---");
-        console.log(combined.slice(-3000));
-        console.log("[xcode_test] --- END RAW OUTPUT ---");
+        debug("--- RAW OUTPUT (last 3000 chars) ---");
+        debug(combined.slice(-3000));
+        debug("--- END RAW OUTPUT ---");
 
         testResult = parseTestResult(combined);
-        console.log("[xcode_test] parsed result: total=%d passed=%d failed=%d duration=%s",
+        debug("parsed result: total=%d passed=%d failed=%d duration=%s",
           testResult.total, testResult.passed, testResult.failed, testResult.duration.toFixed(3));
-        console.log("[xcode_test] test cases found:", testResult.cases.length);
+        debug("test cases found:", testResult.cases.length);
         if (testResult.cases.length > 0) {
           for (const tc of testResult.cases) {
-            console.log("[xcode_test]   %s %s.%s (%.3fs)", tc.passed ? "✓" : "✗", tc.suite, tc.name, tc.duration);
+            debug("  %s %s.%s (%.3fs)", tc.passed ? "✓" : "✗", tc.suite, tc.name, tc.duration);
           }
         }
       } finally {

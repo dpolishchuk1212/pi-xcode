@@ -8,6 +8,7 @@ import {
 } from "../commands.js";
 import { discoverSimulators, findSimulator } from "../discovery.js";
 import { formatBuildResult } from "../format.js";
+import { createLogger } from "../log.js";
 import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
 import { formatDestinationLabel, getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
 import {
@@ -24,6 +25,8 @@ import { clearOperation, startOperation } from "../state.js";
 import { startSpinner, stopSpinner, updateStatusBar } from "../status-bar.js";
 import { createBuildExec } from "../streaming.js";
 import type { Destination, ExecFn } from "../types.js";
+
+const debug = createLogger("run");
 
 export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, state: XcodeState) {
   pi.registerTool({
@@ -48,6 +51,8 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      debug("params:", JSON.stringify(params));
+
       // ── Resolve project/scheme ──────────────────────────────────────
       onUpdate?.({ content: [{ type: "text", text: "Resolving project..." }], details: undefined });
 
@@ -56,6 +61,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
         workspace: params.workspace,
         scheme: params.scheme,
       });
+      debug("resolved project:", resolved.project.path, "scheme:", resolved.scheme);
 
       const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
       const configuration = params.configuration ?? state.activeConfiguration ?? "Debug";
@@ -92,6 +98,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
 
       const destLabel = formatDestinationLabel(dest);
       const destType = destinationTypeLabel(dest);
+      debug("destination:", destLabel, "type:", destType, "id:", dest.id);
 
       const combinedSignal = startOperation(state, `Run ${resolved.scheme ?? "project"} on ${destLabel}`, signal);
 
@@ -119,14 +126,17 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
             details: undefined,
           });
 
+          debug("build command: xcodebuild", buildCmdArgs.join(" "));
           const buildExecFn = createBuildExec(state, exec);
           const buildExec = await buildExecFn("xcodebuild", buildCmdArgs, {
             signal: combinedSignal,
             timeout: 600_000,
             cwd: xcodeArgs.execCwd,
           });
+          debug("build exit code:", buildExec.code, "killed:", buildExec.killed);
           const buildOutput = `${buildExec.stdout}\n${buildExec.stderr}`;
           const buildResult = parseBuildResult(buildOutput);
+          debug("build success:", buildResult.success, "issues:", buildResult.issues.length);
 
           if (!buildResult.success) {
             // Must clean up here — return doesn't trigger catch
@@ -160,6 +170,7 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
         const settingsOutput = settingsResult.stdout;
         const bundleId = parseBundleId(settingsOutput);
         const appPath = parseAppPath(settingsOutput);
+        debug("bundleId:", bundleId, "appPath:", appPath);
 
         if (!bundleId || !appPath) {
           throw new Error(
@@ -169,23 +180,31 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
         }
 
         // ── Stop previous monitor & terminate existing instance ──────────
+        debug("terminating previous instance...");
         state.stopAppMonitor?.();
         state.stopAppMonitor = undefined;
 
         onUpdate?.({ content: [{ type: "text", text: `Terminating previous instance...` }], details: undefined });
         await terminateApp(exec, dest, bundleId, appPath);
+        debug("previous instance terminated");
 
         // ── Boot / prepare destination ───────────────────────────────────
+        debug("preparing destination:", destType);
         onUpdate?.({ content: [{ type: "text", text: `Preparing ${destType}...` }], details: undefined });
         await ensureDestinationReady(exec, dest);
+        debug("destination ready");
 
         // ── Install ──────────────────────────────────────────────────────
+        debug("installing app:", appPath, "on:", destLabel);
         onUpdate?.({ content: [{ type: "text", text: `Installing on ${destLabel}...` }], details: undefined });
         await installApp(exec, dest, appPath, combinedSignal);
+        debug("app installed");
 
         // ── Launch ───────────────────────────────────────────────────────
+        debug("launching:", bundleId);
         onUpdate?.({ content: [{ type: "text", text: `Launching ${bundleId}...` }], details: undefined });
         const launchResult = await launchApp(exec, dest, bundleId, appPath, combinedSignal);
+        debug("launch result:", JSON.stringify(launchResult));
 
         // Operation complete (build+install+launch phase is done)
         clearOperation(state);

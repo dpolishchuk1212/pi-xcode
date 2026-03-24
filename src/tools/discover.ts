@@ -1,7 +1,10 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { discover } from "../discovery.js";
+import { createLogger } from "../log.js";
 import type { ExecFn } from "../types.js";
+
+const debug = createLogger("discover");
 
 export function registerDiscoverTool(pi: ExtensionAPI, exec: ExecFn, cwd: string) {
   pi.registerTool({
@@ -16,12 +19,14 @@ export function registerDiscoverTool(pi: ExtensionAPI, exec: ExecFn, cwd: string
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, _signal, onUpdate) {
+      debug("scanning cwd:", cwd);
       onUpdate?.({
         content: [{ type: "text", text: "Scanning for Xcode projects and simulators..." }],
         details: undefined,
       });
 
       const result = await discover(exec, cwd);
+      debug("found:", result.projects.length, "projects,", result.schemes.length, "schemes,", result.simulators.length, "simulators");
 
       const lines: string[] = [];
 

@@ -7,8 +7,11 @@
  */
 
 import { spawn } from "node:child_process";
+import { createLogger } from "./log.js";
 import type { XcodeState } from "./state.js";
 import type { ExecFn, ExecResult } from "./types.js";
+
+const debug = createLogger("streaming");
 
 // ── Abort helper ───────────────────────────────────────────────────────────
 
@@ -96,6 +99,7 @@ function createStreamingExec(config: StreamingConfig, execFn?: ExecFn) {
     }
 
     // ── Real mode: spawn directly for real-time progress ─────────────
+    debug("spawn:", command, args.join(" "), "cwd:", options?.cwd ?? "(inherit)");
     return new Promise<ExecResult>((resolve) => {
       const proc = spawn(command, args, {
         cwd: options?.cwd,
@@ -134,10 +138,12 @@ function createStreamingExec(config: StreamingConfig, execFn?: ExecFn) {
 
       proc.on("close", (code) => {
         if (stdoutBuffer) config.processLine(stdoutBuffer);
+        debug("process closed, code:", code, "killed:", killed);
         settle({ stdout, stderr, code: code ?? 1, killed });
       });
 
-      proc.on("error", () => {
+      proc.on("error", (err) => {
+        debug("process error:", String(err));
         settle({ stdout, stderr, code: 1, killed: false });
       });
 

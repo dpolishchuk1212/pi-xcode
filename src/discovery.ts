@@ -5,6 +5,7 @@
 import { readFile } from "node:fs/promises";
 import nodePath from "node:path";
 import { buildListArgs, buildShowDestinationsArgs, buildSimctlListArgs } from "./commands.js";
+import { createLogger } from "./log.js";
 import { parseConfigurationList, parseDestinations, parseSchemeList, parseSimulatorList } from "./parsers.js";
 import type {
   Destination,
@@ -15,6 +16,8 @@ import type {
   XcodeProject,
   XcodeScheme,
 } from "./types.js";
+
+const debug = createLogger("discovery");
 
 /**
  * Find .xcodeproj, .xcworkspace, and Package.swift files in `cwd`.
@@ -50,7 +53,10 @@ export async function discoverProjects(exec: ExecFn, cwd: string, maxDepth: numb
     { timeout: 10000 },
   );
 
-  if (result.code !== 0) return [];
+  if (result.code !== 0) {
+    debug("discoverProjects find failed, code:", result.code);
+    return [];
+  }
 
   const projects: XcodeProject[] = [];
 
@@ -79,6 +85,8 @@ export async function discoverProjects(exec: ExecFn, cwd: string, maxDepth: numb
     return a.path.localeCompare(b.path);
   });
 
+  debug("discoverProjects found", projects.length, "in", cwd, "depth:", maxDepth,
+    projects.map(p => `${p.type}:${nodePath.basename(p.path)}`).join(", "));
   return projects;
 }
 
@@ -99,6 +107,7 @@ export async function discoverSchemes(exec: ExecFn, projectPath: string): Promis
     args = buildListArgs(projectPath);
   }
 
+  debug("discoverSchemes for:", projectPath);
   const result = await exec("xcodebuild", args, { timeout: 15000, cwd: execCwd });
 
   const combined = `${result.stdout}\n${result.stderr}`;
@@ -107,6 +116,8 @@ export async function discoverSchemes(exec: ExecFn, projectPath: string): Promis
   // Enrich schemes with product type from .xcscheme files
   await enrichSchemesWithProductType(schemes, projectPath);
 
+  debug("discoverSchemes found", schemes.length, "schemes:",
+    schemes.map(s => `${s.name}(${s.productType ?? "?"})`).join(", "));
   return schemes;
 }
 
@@ -267,11 +278,17 @@ export async function discoverConfigurations(exec: ExecFn, projectPath: string):
  * Discover available simulators.
  */
 export async function discoverSimulators(exec: ExecFn): Promise<Simulator[]> {
+  debug("discoverSimulators");
   const args = buildSimctlListArgs();
   const result = await exec("xcrun", args, { timeout: 10000 });
 
-  if (result.code !== 0) return [];
-  return parseSimulatorList(result.stdout);
+  if (result.code !== 0) {
+    debug("discoverSimulators failed, code:", result.code);
+    return [];
+  }
+  const sims = parseSimulatorList(result.stdout);
+  debug("discoverSimulators found", sims.length, "simulators");
+  return sims;
 }
 
 /**
@@ -294,11 +311,14 @@ export async function discoverDestinations(
     args = buildShowDestinationsArgs({ [flag]: project.path, scheme: schemeName });
   }
 
+  debug("discoverDestinations for:", project.path, "scheme:", schemeName);
   const result = await exec("xcodebuild", args, { timeout: 30_000, cwd: execCwd });
 
   // Parse regardless of exit code — xcodebuild may print destinations even on non-zero exit
   const combined = `${result.stdout}\n${result.stderr}`;
-  return parseDestinations(combined);
+  const dests = parseDestinations(combined);
+  debug("discoverDestinations found", dests.length, "destinations");
+  return dests;
 }
 
 /**

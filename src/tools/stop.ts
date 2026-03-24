@@ -1,10 +1,13 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { createLogger } from "../log.js";
 import type { ResolveUI } from "../resolve.js";
 import { classifyDestination } from "../runner.js";
 import type { XcodeState } from "../state.js";
 import { stopSpinner, updateStatusBar } from "../status-bar.js";
 import type { ExecFn } from "../types.js";
+
+const debug = createLogger("stop");
 
 /**
  * Force-kill any running xcodebuild processes. Uses SIGKILL (-9) for immediate
@@ -48,15 +51,18 @@ export async function stopActiveOperation(
   const operationLabel = state.activeOperationLabel;
   const hadActiveOperation = !!state.activeAbortController;
   const previousStatus = state.appStatus;
+  debug("stopping — status:", previousStatus, "operation:", operationLabel ?? "none", "hasAbortController:", hadActiveOperation);
 
   // 1. Abort via AbortController (signals the exec calls)
   if (state.activeAbortController) {
+    debug("aborting active controller");
     state.activeAbortController.abort();
     state.activeAbortController = undefined;
     state.activeOperationLabel = undefined;
   }
 
   // 2. Kill xcodebuild processes directly for immediate effect
+  debug("killing xcodebuild processes");
   await killXcodebuildProcesses(exec);
 
   // 3. Stop app monitor if running
@@ -85,6 +91,7 @@ export async function stopActiveOperation(
 
   // Determine what was stopped for the response message
   const stoppedSomething = hadActiveOperation || previousStatus !== "idle";
+  debug("stopped:", stoppedSomething);
 
   if (stoppedSomething) {
     let label: string;
