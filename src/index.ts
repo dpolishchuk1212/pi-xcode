@@ -40,7 +40,7 @@ import { startSpinner, stopSpinner, updateStatusBar } from "./status-bar.js";
 import { createBuildExec, createTestExec } from "./streaming.js";
 import { registerBuildTool } from "./tools/build.js";
 import { registerCleanTool } from "./tools/clean.js";
-import { registerDiscoverTool } from "./tools/discover.js";
+
 import { registerRunTool } from "./tools/run.js";
 import { registerStopTool, stopActiveOperation } from "./tools/stop.js";
 import { registerTestTool } from "./tools/test.js";
@@ -682,7 +682,6 @@ export default function (pi: ExtensionAPI) {
     sessionCwd = ctx.cwd;
     registerBuildTool(pi, exec, sessionCwd, state);
     registerCleanTool(pi, exec, sessionCwd, state);
-    registerDiscoverTool(pi, exec, sessionCwd);
     registerRunTool(pi, exec, sessionCwd, state);
     registerTestTool(pi, exec, sessionCwd, state);
     registerStopTool(pi, exec, sessionCwd, state);

@@ -4,7 +4,7 @@ import { buildBuildArgs, buildDestinationString, buildSimulatorDestination } fro
 import { formatBuildResult } from "../format.js";
 import { createLogger } from "../log.js";
 import { parseBuildResult } from "../parsers.js";
-import { formatDestinationLabel, getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
+import { formatDestinationLabel, getXcodebuildProjectArgs } from "../resolve.js";
 import type { XcodeState } from "../state.js";
 import { clearOperation, startOperation } from "../state.js";
 import { startSpinner, stopSpinner, updateStatusBar } from "../status-bar.js";
@@ -18,36 +18,33 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
     name: "xcode_build",
     label: "Xcode Build",
     description:
-      "Build an Xcode project or workspace. Auto-discovers project, workspace, and scheme when not specified. Returns parsed build errors/warnings.",
-    promptSnippet: "Build an Xcode project, workspace or package returning parsed errors and warnings",
+      "Build the active Xcode project. Uses the active project, scheme, configuration, and destination. Returns parsed build errors/warnings.",
+    promptSnippet: "Build the active Xcode project returning parsed errors and warnings",
     promptGuidelines: [
       "Use xcode_build to compile Xcode projects",
-      "Use active project, scheme, configuration, and destination if user doesn't specify others explicitly",
+      "Always uses the active project, scheme, configuration, and destination — do NOT pass project, workspace, or scheme",
+      "NEVER pass simulator or destination unless the user EXPLICITLY asks to use a different simulator/device — the active destination is already the correct default",
     ],
     parameters: Type.Object({
-      project: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
-      scheme: Type.Optional(Type.String({ description: "Build scheme (auto-discovered if omitted)" })),
-      configuration: Type.Optional(Type.String({ description: "Debug or Release (default: Debug)" })),
+      configuration: Type.Optional(Type.String({ description: "Debug or Release (default: active configuration)" })),
       destination: Type.Optional(
-        Type.String({ description: "Build destination, e.g. 'platform=iOS Simulator,name=iPhone 16'" }),
+        Type.String({ description: "Build destination. Only pass if user explicitly requests a different destination." }),
       ),
-      simulator: Type.Optional(Type.String({ description: "Simulator name or UDID (builds for this simulator)" })),
+      simulator: Type.Optional(Type.String({ description: "Simulator name or UDID. Only pass if user explicitly requests a different simulator." })),
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
+      // ── Validate active state ────────────────────────────────────────
+      if (!state.activeProject || !state.activeScheme) {
+        throw new Error("No active project or scheme. Use /project and /scheme to select one.");
+      }
 
-      // ── Resolve project and scheme ───────────────────────────────────
-      const resolved = await resolveProjectAndScheme(exec, cwd, state, ctx.ui, {
-        project: params.project,
-        workspace: params.workspace,
-        scheme: params.scheme,
-      });
+      debug("active project:", state.activeProject.path, "scheme:", state.activeScheme.name);
 
-      const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
+      const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
 
       // ── Resolve destination ──────────────────────────────────────────
+      // Priority: explicit destination > explicit simulator > active destination
       let destination = params.destination;
       let destinationLabel: string | undefined;
 
@@ -65,7 +62,7 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       const args = buildBuildArgs({
         project: xcodeArgs.projectFlag,
         workspace: xcodeArgs.workspaceFlag,
-        scheme: resolved.scheme,
+        scheme: state.activeScheme.name,
         configuration,
         destination,
       });
@@ -74,13 +71,13 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       debug("destination:", destination, "configuration:", configuration);
 
       const destLabel = destinationLabel ? ` for ${destinationLabel}` : "";
-      onUpdate?.({ content: [{ type: "text", text: `Building ${resolved.scheme ?? "project"} (${configuration})${destLabel}...` }], details: undefined });
+      onUpdate?.({ content: [{ type: "text", text: `Building ${state.activeScheme.name} (${configuration})${destLabel}...` }], details: undefined });
 
       state.appStatus = "building";
       startSpinner(cwd, state, ctx.ui);
       const combinedSignal = startOperation(
         state,
-        `Build ${resolved.scheme ?? "project"} (${configuration})${destLabel}`,
+        `Build ${state.activeScheme.name} (${configuration})${destLabel}`,
         signal,
       );
 

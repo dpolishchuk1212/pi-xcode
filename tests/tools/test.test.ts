@@ -212,26 +212,21 @@ describe("xcode_test tool", () => {
     );
   });
 
-  it("uses explicit project and scheme params", async () => {
+  it("always uses active project and scheme from state", async () => {
     const exec = createMockExec([
       ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
     ]);
 
-    registerTestTool(mockPi as any, exec, "/project", stateWithSimulator());
+    const state = stateWithSimulator();
+    registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
     const ctx = createMockCtx();
 
-    await tool.execute(
-      "call-1",
-      { project: "Custom.xcodeproj", scheme: "CustomTests" },
-      undefined,
-      vi.fn(),
-      ctx,
-    );
+    await tool.execute("call-1", {}, undefined, vi.fn(), ctx);
 
     expect(exec).toHaveBeenCalledWith(
       "xcodebuild",
-      expect.arrayContaining(["-project", "Custom.xcodeproj", "-scheme", "CustomTests"]),
+      expect.arrayContaining(["-project", "/project/App.xcodeproj", "-scheme", "App"]),
       expect.anything(),
     );
   });
@@ -261,21 +256,16 @@ describe("xcode_test tool", () => {
     );
   });
 
-  it("auto-discovers project when not specified", async () => {
-    const exec = createMockExec([
-      ["find", { stdout: "/project/MyApp.xcodeproj\n" }],
-      ["simctl", { stdout: JSON.stringify({ devices: {} }) }],
-      ["-list", { stdout: "    Schemes:\n        MyApp\n" }],
-      ["-showdestinations", { stdout: '{ platform:iOS Simulator, arch:arm64, id:SIM-UUID, OS:18.0, name:iPhone 16 }\n' }],
-      ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
-    ]);
+  it("throws when no active project or scheme", async () => {
+    const exec = createMockExec([]);
 
     registerTestTool(mockPi as any, exec, "/project", createState());
     const tool = mockPi.getTool("xcode_test");
     const ctx = createMockCtx();
 
-    const result = await tool.execute("call-1", {}, undefined, vi.fn(), ctx);
-    expect(result.details.success).toBe(true);
+    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(
+      /No active project or scheme/,
+    );
   });
 
   // ── appStatus lifecycle ──────────────────────────────────────────────────

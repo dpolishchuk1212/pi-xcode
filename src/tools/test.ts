@@ -4,7 +4,7 @@ import { buildDestinationString, buildSimulatorDestination, buildTestArgs } from
 import { formatTestResult } from "../format.js";
 import { createLogger } from "../log.js";
 import { parseTestResult } from "../parsers.js";
-import { formatDestinationLabel, getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
+import { formatDestinationLabel, getXcodebuildProjectArgs } from "../resolve.js";
 import type { XcodeState } from "../state.js";
 import { clearOperation, startOperation } from "../state.js";
 import { startSpinner, stopSpinner, updateStatusBar } from "../status-bar.js";
@@ -18,19 +18,17 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
     name: "xcode_test",
     label: "Xcode Test",
     description:
-      "Run unit tests or UI tests for an Xcode project. Returns a structured summary of passed/failed tests.",
+      "Run unit tests or UI tests for the active Xcode project. Uses the active project, scheme, configuration, and destination. Returns a structured summary of passed/failed tests.",
     promptSnippet: "Run Xcode unit or UI tests and return structured pass/fail results",
     promptGuidelines: [
-      "Use active project, scheme, configuration, and destination if user doesn't specify others explicitly",
+      "Always uses the active project, scheme, configuration, and destination — do NOT pass project, workspace, or scheme",
+      "NEVER pass simulator or destination unless the user EXPLICITLY asks to use a different simulator/device — the active destination is already the correct default",
       "Use onlyTesting to run a specific test class or method, e.g. 'MyAppTests/MyTests/testFoo'.",
     ],
     parameters: Type.Object({
-      project: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
-      scheme: Type.Optional(Type.String({ description: "Build scheme (auto-discovered if omitted)" })),
-      configuration: Type.Optional(Type.String({ description: "Debug or Release (default: Debug)" })),
-      destination: Type.Optional(Type.String({ description: "Build destination" })),
-      simulator: Type.Optional(Type.String({ description: "Simulator name or UDID" })),
+      configuration: Type.Optional(Type.String({ description: "Debug or Release (default: active configuration)" })),
+      destination: Type.Optional(Type.String({ description: "Build destination. Only pass if user explicitly requests a different destination." })),
+      simulator: Type.Optional(Type.String({ description: "Simulator name or UDID. Only pass if user explicitly requests a different simulator." })),
       testPlan: Type.Optional(Type.String({ description: "Test plan to use" })),
       onlyTesting: Type.Optional(
         Type.Array(Type.String(), { description: "Run only these tests (e.g. 'MyTests/testFoo')" }),
@@ -39,21 +37,19 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
     }),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
+      // ── Validate active state ────────────────────────────────────────
+      if (!state.activeProject || !state.activeScheme) {
+        throw new Error("No active project or scheme. Use /project and /scheme to select one.");
+      }
 
-      // ── Resolve project and scheme ───────────────────────────────────
       debug("params:", JSON.stringify(params));
-      const resolved = await resolveProjectAndScheme(exec, cwd, state, ctx.ui, {
-        project: params.project,
-        workspace: params.workspace,
-        scheme: params.scheme,
-      });
-      debug("resolved project:", resolved.project.path, "scheme:", resolved.scheme);
+      debug("active project:", state.activeProject.path, "scheme:", state.activeScheme.name);
 
-      const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
+      const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
       debug("xcodeArgs:", JSON.stringify(xcodeArgs));
 
       // ── Resolve destination ──────────────────────────────────────────
+      // Priority: explicit destination > explicit simulator > active destination
       let destination = params.destination;
       if (!destination && params.simulator) {
         destination = buildSimulatorDestination(params.simulator);
@@ -67,7 +63,7 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       const args = buildTestArgs({
         project: xcodeArgs.projectFlag,
         workspace: xcodeArgs.workspaceFlag,
-        scheme: resolved.scheme,
+        scheme: state.activeScheme.name,
         configuration,
         destination,
         testPlan: params.testPlan,
@@ -83,14 +79,14 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
         ? ` on ${formatDestinationLabel(state.activeDestination)}`
         : "";
       onUpdate?.({
-        content: [{ type: "text", text: `Testing ${resolved.scheme ?? "project"} (${configuration})${destLabel}...` }],
+        content: [{ type: "text", text: `Testing ${state.activeScheme.name} (${configuration})${destLabel}...` }],
         details: undefined,
       });
 
       state.appStatus = "testing";
       startSpinner(cwd, state, ctx.ui);
 
-      const combinedSignal = startOperation(state, `Test ${resolved.scheme ?? "project"} (${configuration})${destLabel}`, signal);
+      const combinedSignal = startOperation(state, `Test ${state.activeScheme.name} (${configuration})${destLabel}`, signal);
 
       let testResult: TestResult | undefined;
       try {

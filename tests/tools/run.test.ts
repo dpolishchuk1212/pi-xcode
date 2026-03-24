@@ -306,28 +306,16 @@ describe("xcode_run tool", () => {
     expect(state.appStatus).toBe("idle");
   });
 
-  it("auto-discovers project when not specified", async () => {
-    const exec = createMockExec([
-      ["find", { stdout: "/project/MyApp.xcodeproj\n" }],
-      ["simctl list", { stdout: JSON.stringify({ devices: {} }) }],
-      ["-list", { stdout: "    Schemes:\n        MyApp\n" }],
-      ["-showdestinations", { stdout: '{ platform:iOS Simulator, arch:arm64, id:SIM-UUID, OS:18.0, name:iPhone 16 }\n' }],
-      ["-showBuildSettings", { stdout: BUILD_SETTINGS }],
-      [" build", { stdout: "** BUILD SUCCEEDED **\n" }],
-      ["simctl terminate", { code: 0 }],
-      ["simctl boot", { code: 0 }],
-      ["open -a Simulator", { code: 0 }],
-      ["simctl install", { code: 0 }],
-      ["simctl launch", { stdout: "com.test.App: 12345\n" }],
-      ["ps", { code: 0 }],
-    ]);
+  it("throws when no active project or scheme", async () => {
+    const exec = createMockExec([]);
 
     registerRunTool(mockPi as any, exec, "/project", createState());
     const tool = mockPi.getTool("xcode_run");
     const ctx = createMockCtx();
 
-    const result = await tool.execute("call-1", {}, undefined, vi.fn(), ctx);
-    expect(result.details.success).toBe(true);
+    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(
+      /No active project or scheme/,
+    );
   });
 
   it("finds simulator by name when simulator param is provided", async () => {
