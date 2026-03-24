@@ -46,12 +46,6 @@ export interface Destination {
   variant?: string; // "Designed for [iPad,iPhone]", "Mac Catalyst"
 }
 
-export interface DiscoveryResult {
-  projects: XcodeProject[];
-  schemes: XcodeScheme[];
-  simulators: Simulator[];
-}
-
 // ── Build types ────────────────────────────────────────────────────────────
 
 export interface BuildIssue {

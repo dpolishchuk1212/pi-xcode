@@ -1,9 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { createLogger } from "../log.js";
-import type { ResolveUI } from "../resolve.js";
 import { classifyDestination } from "../runner.js";
 import type { XcodeState } from "../state.js";
+import type { StatusBarUI } from "../status-bar.js";
 import { stopSpinner, updateStatusBar } from "../status-bar.js";
 import type { ExecFn } from "../types.js";
 
@@ -46,7 +46,7 @@ export async function stopActiveOperation(
   exec: ExecFn,
   cwd: string,
   state: XcodeState,
-  ui: Pick<ResolveUI, "setStatus" | "theme" | "notify">,
+  ui: StatusBarUI & { notify(msg: string, level: "info" | "warning" | "error"): void },
 ) {
   const operationLabel = state.activeOperationLabel;
   const hadActiveOperation = !!state.activeAbortController;

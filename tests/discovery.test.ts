@@ -1,14 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  autoSelect,
-  discover,
   discoverConfigurations,
   discoverProjects,
   discoverSchemes,
   discoverSimulators,
   findSimulator,
 } from "../src/discovery.js";
-import type { DiscoveryResult, ExecFn, ExecResult, Simulator } from "../src/types.js";
+import type { ExecFn, ExecResult, Simulator } from "../src/types.js";
 
 // ── Helper: create a mock exec ─────────────────────────────────────────────
 
@@ -196,71 +194,6 @@ describe("discoverSimulators", () => {
 });
 
 // ── discover (full) ────────────────────────────────────────────────────────
-
-describe("discover", () => {
-  it("combines projects, schemes, and simulators", async () => {
-    const exec = mockExec({
-      find: { stdout: "/project/App.xcodeproj\n" },
-      "-list": {
-        stdout: `    Schemes:
-        App
-`,
-      },
-      simctl: {
-        stdout: JSON.stringify({
-          devices: {
-            "com.apple.CoreSimulator.SimRuntime.iOS-18-0": [
-              { udid: "UUID-1", name: "iPhone 16", state: "Booted", isAvailable: true },
-            ],
-          },
-        }),
-      },
-    });
-
-    const result = await discover(exec, "/project");
-    expect(result.projects).toHaveLength(1);
-    expect(result.schemes).toHaveLength(1);
-    expect(result.simulators).toHaveLength(1);
-  });
-});
-
-// ── autoSelect ─────────────────────────────────────────────────────────────
-
-describe("autoSelect", () => {
-  const discovery: DiscoveryResult = {
-    projects: [
-      { path: "/p/App.xcworkspace", type: "workspace" },
-      { path: "/p/App.xcodeproj", type: "project" },
-    ],
-    schemes: [
-      { name: "App", project: "/p/App.xcworkspace" },
-      { name: "AppTests", project: "/p/App.xcworkspace" },
-    ],
-    simulators: [],
-  };
-
-  it("selects first project and non-test scheme by default", () => {
-    const { project, scheme } = autoSelect(discovery);
-    expect(project?.type).toBe("workspace");
-    expect(scheme?.name).toBe("App");
-  });
-
-  it("selects preferred scheme when specified", () => {
-    const { scheme } = autoSelect(discovery, "AppTests");
-    expect(scheme?.name).toBe("AppTests");
-  });
-
-  it("falls back to first scheme if preferred not found", () => {
-    const { scheme } = autoSelect(discovery, "Nonexistent");
-    expect(scheme?.name).toBe("App");
-  });
-
-  it("returns empty for no projects", () => {
-    const { project, scheme } = autoSelect({ projects: [], schemes: [], simulators: [] });
-    expect(project).toBeUndefined();
-    expect(scheme).toBeUndefined();
-  });
-});
 
 // ── findSimulator ──────────────────────────────────────────────────────────
 

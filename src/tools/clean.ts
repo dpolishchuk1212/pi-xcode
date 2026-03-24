@@ -2,7 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { buildCleanArgs } from "../commands.js";
 import { createLogger } from "../log.js";
-import { getXcodebuildProjectArgs, resolveProjectAndScheme } from "../resolve.js";
+import { getXcodebuildProjectArgs } from "../resolve.js";
 import type { XcodeState } from "../state.js";
 import { clearOperation, startOperation } from "../state.js";
 import { startSpinner, stopSpinner, updateStatusBar } from "../status-bar.js";
@@ -15,16 +15,20 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
   pi.registerTool({
     name: "xcode_clean",
     label: "Xcode Clean",
-    description: "Clean build artifacts for an Xcode project or workspace.",
-    promptSnippet: "Clean Xcode build artifacts",
-    parameters: Type.Object({
-      project: Type.Optional(Type.String({ description: "Path to .xcodeproj" })),
-      workspace: Type.Optional(Type.String({ description: "Path to .xcworkspace" })),
-      scheme: Type.Optional(Type.String({ description: "Build scheme (auto-discovered if omitted)" })),
-    }),
+    description: "Clean build artifacts for the active Xcode project or workspace.",
+    promptSnippet: "Clean Xcode build artifacts for the active project",
+    promptGuidelines: [
+      "Always uses the active project and scheme — do NOT pass project, workspace, or scheme",
+    ],
+    parameters: Type.Object({}),
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      debug("params:", JSON.stringify(params));
+    async execute(_toolCallId, _params, signal, onUpdate, ctx) {
+      // ── Validate active state ────────────────────────────────────────
+      if (!state.activeProject) {
+        throw new Error("No active project. Use /project to select one.");
+      }
+
+      debug("active project:", state.activeProject.path, "type:", state.activeProject.type, "scheme:", state.activeScheme?.name);
 
       // ── Stop any active operation first ──────────────────────────────
       if (state.appStatus !== "idle") {
@@ -32,20 +36,10 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
         await stopActiveOperation(exec, cwd, state, ctx.ui);
       }
 
-      // ── Resolve project and scheme ───────────────────────────────────
-      onUpdate?.({ content: [{ type: "text", text: "Discovering project..." }], details: undefined });
-
-      const resolved = await resolveProjectAndScheme(exec, cwd, state, ctx.ui, {
-        project: params.project,
-        workspace: params.workspace,
-        scheme: params.scheme,
-      });
-      debug("resolved project:", resolved.project.path, "type:", resolved.project.type, "scheme:", resolved.scheme);
-
-      const xcodeArgs = getXcodebuildProjectArgs(resolved.project);
+      const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
 
       // For Package.swift, use `swift package clean` which is more idiomatic
-      if (resolved.project.type === "package") {
+      if (state.activeProject.type === "package") {
         state.appStatus = "cleaning";
         startSpinner(cwd, state, ctx.ui);
         const combinedSignal = startOperation(state, "Clean package", signal);
@@ -76,19 +70,20 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
         }
       }
 
+      const schemeName = state.activeScheme?.name;
       const args = buildCleanArgs({
         project: xcodeArgs.projectFlag,
         workspace: xcodeArgs.workspaceFlag,
-        scheme: resolved.scheme,
+        scheme: schemeName,
       });
 
       state.appStatus = "cleaning";
       startSpinner(cwd, state, ctx.ui);
-      const combinedSignal = startOperation(state, `Clean ${resolved.scheme ?? "project"}`, signal);
+      const combinedSignal = startOperation(state, `Clean ${schemeName ?? "project"}`, signal);
       try {
         debug("clean command: xcodebuild", args.join(" "));
         onUpdate?.({
-          content: [{ type: "text", text: `Cleaning ${resolved.scheme ?? "project"}...` }],
+          content: [{ type: "text", text: `Cleaning ${schemeName ?? "project"}...` }],
           details: undefined,
         });
 

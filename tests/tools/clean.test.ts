@@ -157,35 +157,26 @@ describe("xcode_clean tool", () => {
     );
   });
 
-  it("uses explicit project param", async () => {
-    const exec = createMockExec([
-      ["-list", { stdout: "    Schemes:\n        Custom\n" }],
-      ["clean", { code: 0 }],
-    ]);
+  it("throws when no active project", async () => {
+    const exec = createMockExec([]);
 
     registerCleanTool(mockPi as any, exec, "/project", createState());
     const tool = mockPi.getTool("xcode_clean");
     const ctx = createMockCtx();
 
-    await tool.execute("call-1", { project: "Custom.xcodeproj" }, undefined, vi.fn(), ctx);
-
-    expect(exec).toHaveBeenCalledWith(
-      "xcodebuild",
-      expect.arrayContaining(["-project", "Custom.xcodeproj"]),
-      expect.anything(),
+    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(
+      /No active project/,
     );
   });
 
-  it("auto-discovers project when not specified", async () => {
-    const exec = createMockExec([
-      ["find", { stdout: "/project/MyApp.xcodeproj\n" }],
-      ["simctl", { stdout: JSON.stringify({ devices: {} }) }],
-      ["-list", { stdout: "    Schemes:\n        MyApp\n" }],
-      ["-showdestinations", { stdout: "" }],
-      ["clean", { code: 0 }],
-    ]);
+  it("cleans without scheme when only project is set", async () => {
+    const state = createState();
+    state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
+    // No activeScheme set
 
-    registerCleanTool(mockPi as any, exec, "/project", createState());
+    const exec = createMockExec([["clean", { code: 0 }]]);
+
+    registerCleanTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_clean");
     const ctx = createMockCtx();
 

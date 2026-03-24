@@ -9,7 +9,6 @@ import { createLogger } from "./log.js";
 import { parseConfigurationList, parseDestinations, parseSchemeList, parseSimulatorList } from "./parsers.js";
 import type {
   Destination,
-  DiscoveryResult,
   ExecFn,
   SchemeProductType,
   Simulator,
@@ -324,63 +323,6 @@ export async function discoverDestinations(
   const dests = parseDestinations(combined);
   debug("discoverDestinations found", dests.length, "destinations");
   return dests;
-}
-
-/**
- * Full discovery: projects → schemes → simulators.
- */
-export async function discover(exec: ExecFn, cwd: string): Promise<DiscoveryResult> {
-  const [projects, simulators] = await Promise.all([discoverProjects(exec, cwd), discoverSimulators(exec)]);
-
-  const schemes: XcodeScheme[] = [];
-  for (const project of projects) {
-    const projectSchemes = await discoverSchemes(exec, project.path);
-    schemes.push(...projectSchemes);
-  }
-
-  return { projects, schemes, simulators };
-}
-
-/**
- * Auto-select the best project/workspace and scheme for a build.
- * Prefers workspaces over projects, uses the best app scheme.
- */
-export function autoSelect(
-  discovery: DiscoveryResult,
-  preferredScheme?: string,
-): { project?: XcodeProject; scheme?: XcodeScheme } {
-  const project = discovery.projects[0];
-  if (!project) return {};
-
-  if (preferredScheme) {
-    const scheme = discovery.schemes.find((s) => s.name === preferredScheme);
-    if (scheme) return { project, scheme };
-  }
-
-  // Derive project base name for tiebreaking (e.g. "Letyco.xcworkspace" → "Letyco")
-  const baseName = nodePath.basename(project.path).replace(/\.(xcworkspace|xcodeproj|swift)$/, "");
-  const schemes = discovery.schemes;
-
-  // Prefer app schemes, with project-name match as tiebreaker
-  const appSchemes = schemes.filter((s) => s.productType === "app");
-  if (appSchemes.length > 0) {
-    const matching = appSchemes.find((s) => s.name === baseName);
-    return { project, scheme: matching ?? appSchemes[0] };
-  }
-
-  const extScheme = schemes.find((s) => s.productType === "extension");
-  if (extScheme) return { project, scheme: extScheme };
-
-  const nonTestNonFramework = schemes.filter((s) => {
-    const lower = s.name.toLowerCase();
-    return !lower.includes("test") && !lower.includes("framework");
-  });
-  if (nonTestNonFramework.length > 0) {
-    const matching = nonTestNonFramework.find((s) => s.name === baseName);
-    return { project, scheme: matching ?? nonTestNonFramework[0] };
-  }
-
-  return { project, scheme: schemes[0] };
 }
 
 /**
