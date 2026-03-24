@@ -89,6 +89,17 @@ export async function ensureDestinationReady(exec: ExecFn, dest: Destination): P
     // Already booted or other non-fatal error
   }
 
+  // Wait until the simulator runtime is fully ready (all system services started).
+  // Without this, simctl install/launch can silently fail or the app can crash
+  // because the runtime isn't ready to host apps yet.
+  debug("waiting for simulator boot status:", dest.id);
+  try {
+    await exec("xcrun", ["simctl", "bootstatus", dest.id, "-b"], { timeout: 120_000 });
+    debug("simulator fully booted");
+  } catch {
+    debug("bootstatus wait failed (proceeding anyway)");
+  }
+
   // Open Simulator.app so the user can see it
   debug("opening Simulator.app");
   await exec("open", ["-a", "Simulator"], { timeout: 5_000 });
