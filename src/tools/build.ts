@@ -21,9 +21,8 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       "Build the active Xcode project. Uses the active project, scheme, configuration, and destination. Returns parsed build errors/warnings.",
     promptSnippet: "Build the active Xcode project returning parsed errors and warnings",
     promptGuidelines: [
-      "Use xcode_build to compile Xcode projects",
-      "Always uses the active project, scheme, configuration, and destination — do NOT pass project, workspace, or scheme",
-      "NEVER pass simulator or destination unless the user EXPLICITLY asks to use a different simulator/device — the active destination is already the correct default",
+      "Use xcode_build to compile the active Xcode project.",
+      "Destination and configuration can be overridden — only do so if the user explicitly asks.",
     ],
     parameters: Type.Object({
       configuration: Type.Optional(Type.String({ description: "Debug or Release (default: active configuration)" })),

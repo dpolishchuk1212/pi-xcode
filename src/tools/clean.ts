@@ -18,7 +18,7 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
     description: "Clean build artifacts for the active Xcode project or workspace.",
     promptSnippet: "Clean Xcode build artifacts for the active project",
     promptGuidelines: [
-      "Always uses the active project and scheme — do NOT pass project, workspace, or scheme",
+      "Use xcode_clean to remove build artifacts for the active project. Takes no parameters.",
     ],
     parameters: Type.Object({}),
 

@@ -21,8 +21,8 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       "Run unit tests or UI tests for the active Xcode project. Uses the active project, scheme, configuration, and destination. Returns a structured summary of passed/failed tests.",
     promptSnippet: "Run Xcode unit or UI tests and return structured pass/fail results",
     promptGuidelines: [
-      "Always uses the active project, scheme, configuration, and destination — do NOT pass project, workspace, or scheme",
-      "NEVER pass simulator or destination unless the user EXPLICITLY asks to use a different simulator/device — the active destination is already the correct default",
+      "Use xcode_test to run unit or UI tests for the active project.",
+      "Destination and configuration can be overridden — only do so if the user explicitly asks.",
       "Use onlyTesting to run a specific test class or method, e.g. 'MyAppTests/MyTests/testFoo'.",
     ],
     parameters: Type.Object({

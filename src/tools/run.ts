@@ -37,9 +37,8 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       "Build, install, and launch the active app on the active destination (simulator, physical device, or Mac)",
     promptSnippet: "Build and run the active iOS/macOS app on the active destination",
     promptGuidelines: [
-      "Use xcode_run to build and launch apps on the active destination.",
-      "Always uses the active project, scheme, configuration, and destination — do NOT pass project, workspace, or scheme",
-      "NEVER pass simulator unless the user EXPLICITLY asks to use a different simulator/device — the active destination is already the correct default",
+      "Use xcode_run to build, install, and launch the active app on the active destination.",
+      "Simulator and configuration can be overridden — only do so if the user explicitly asks.",
     ],
     parameters: Type.Object({
       configuration: Type.Optional(Type.String({ description: "Debug or Release (default: active configuration)" })),
