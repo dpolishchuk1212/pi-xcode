@@ -105,6 +105,46 @@ export async function ensureDestinationReady(exec: ExecFn, dest: Destination): P
   await exec("open", ["-a", "Simulator"], { timeout: 5_000 });
 }
 
+// ── Uninstall ──────────────────────────────────────────────────────────────
+
+/**
+ * Uninstall an app from the destination. Used as part of force-refresh retry
+ * when a normal install+launch cycle fails. Errors are silently ignored
+ * (app might not be installed).
+ */
+export async function uninstallApp(
+  exec: ExecFn,
+  dest: Destination,
+  bundleId: string,
+): Promise<void> {
+  const type = classifyDestination(dest);
+  debug("uninstallApp bundleId:", bundleId, "type:", type, "destId:", dest.id);
+
+  try {
+    switch (type) {
+      case "simulator":
+        debug("simctl uninstall", dest.id, bundleId);
+        await exec("xcrun", ["simctl", "uninstall", dest.id, bundleId], { timeout: 30_000 });
+        debug("simctl uninstall completed");
+        break;
+
+      case "device":
+        debug("devicectl uninstall", dest.id, bundleId);
+        await exec("xcrun", ["devicectl", "device", "uninstall", "app", "--device", dest.id, bundleId], {
+          timeout: 30_000,
+        });
+        debug("devicectl uninstall completed");
+        break;
+
+      case "mac":
+        debug("mac uninstall skipped (runs from build dir)");
+        break;
+    }
+  } catch {
+    debug("uninstallApp ignored error (app might not be installed)");
+  }
+}
+
 // ── Install ────────────────────────────────────────────────────────────────
 
 /**
