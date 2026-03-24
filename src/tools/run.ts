@@ -19,6 +19,7 @@ import {
   launchApp,
   monitorAppLifecycle,
   terminateApp,
+  uninstallApp,
 } from "../runner.js";
 import type { XcodeState } from "../state.js";
 import { clearOperation, startOperation } from "../state.js";
@@ -194,17 +195,38 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
         await ensureDestinationReady(exec, dest);
         debug("destination ready");
 
-        // ── Install ──────────────────────────────────────────────────────
+        // ── Install & Launch (with force-refresh retry) ─────────────────
         debug("installing app:", appPath, "on:", destLabel);
         onUpdate?.({ content: [{ type: "text", text: `Installing on ${destLabel}...` }], details: undefined });
         await installApp(exec, dest, appPath, combinedSignal);
         debug("app installed");
 
-        // ── Launch ───────────────────────────────────────────────────────
         debug("launching:", bundleId);
         onUpdate?.({ content: [{ type: "text", text: `Launching ${bundleId}...` }], details: undefined });
-        const launchResult = await launchApp(exec, dest, bundleId, appPath, combinedSignal);
+        let launchResult = await launchApp(exec, dest, bundleId, appPath, combinedSignal);
         debug("launch result:", JSON.stringify(launchResult));
+
+        // If the initial launch failed, force-refresh: uninstall → reinstall → relaunch.
+        // This handles cases where a stale install or corrupted app container prevents launch.
+        if (!launchResult.success) {
+          debug("launch failed, attempting force-refresh: uninstall → reinstall → relaunch");
+          onUpdate?.({ content: [{ type: "text", text: `Launch failed, retrying with force refresh...` }], details: undefined });
+
+          await terminateApp(exec, dest, bundleId, appPath);
+          await uninstallApp(exec, dest, bundleId);
+          debug("force-refresh: uninstalled");
+
+          // Small delay to let the simulator clean up
+          await new Promise((r) => setTimeout(r, 1000));
+
+          onUpdate?.({ content: [{ type: "text", text: `Reinstalling on ${destLabel}...` }], details: undefined });
+          await installApp(exec, dest, appPath, combinedSignal);
+          debug("force-refresh: reinstalled");
+
+          onUpdate?.({ content: [{ type: "text", text: `Relaunching ${bundleId}...` }], details: undefined });
+          launchResult = await launchApp(exec, dest, bundleId, appPath, combinedSignal);
+          debug("force-refresh launch result:", JSON.stringify(launchResult));
+        }
 
         // Operation complete (build+install+launch phase is done)
         clearOperation(state);
