@@ -336,6 +336,28 @@ describe("parseBundleId", () => {
   it("returns undefined when not found", () => {
     expect(parseBundleId("no bundle id here")).toBeUndefined();
   });
+
+  it("picks app target bundle ID when multiple targets exist", () => {
+    const output = `Build settings for action build and target SomeFramework:
+    PRODUCT_BUNDLE_IDENTIFIER = NO
+    PRODUCT_TYPE = com.apple.product-type.framework
+
+Build settings for action build and target MyApp:
+    PRODUCT_BUNDLE_IDENTIFIER = com.example.MyApp
+    PRODUCT_TYPE = com.apple.product-type.application
+
+Build settings for action build and target MyAppTests:
+    PRODUCT_BUNDLE_IDENTIFIER = com.example.MyAppTests
+    PRODUCT_TYPE = com.apple.product-type.bundle.unit-test`;
+
+    expect(parseBundleId(output)).toBe("com.example.MyApp");
+  });
+
+  it("handles single target with no section headers", () => {
+    const output = `    PRODUCT_BUNDLE_IDENTIFIER = com.example.SingleApp
+    PRODUCT_NAME = SingleApp`;
+    expect(parseBundleId(output)).toBe("com.example.SingleApp");
+  });
 });
 
 describe("parseAppPath", () => {
@@ -353,6 +375,20 @@ describe("parseAppPath", () => {
     expect(parseAppPath("BUILT_PRODUCTS_DIR = /some/path")).toBeUndefined();
     expect(parseAppPath("FULL_PRODUCT_NAME = Foo.app")).toBeUndefined();
     expect(parseAppPath("nothing useful")).toBeUndefined();
+  });
+
+  it("picks app target path when multiple targets exist", () => {
+    const output = `Build settings for action build and target SomeFramework:
+    BUILT_PRODUCTS_DIR = /path/to/framework
+    FULL_PRODUCT_NAME = SomeFramework.framework
+    PRODUCT_TYPE = com.apple.product-type.framework
+
+Build settings for action build and target MyApp:
+    BUILT_PRODUCTS_DIR = /path/to/app
+    FULL_PRODUCT_NAME = MyApp.app
+    PRODUCT_TYPE = com.apple.product-type.application`;
+
+    expect(parseAppPath(output)).toBe("/path/to/app/MyApp.app");
   });
 });
 

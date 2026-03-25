@@ -235,20 +235,56 @@ export function parseSimulatorList(jsonOutput: string): Simulator[] {
 // ── Bundle ID parsing ──────────────────────────────────────────────────────
 
 /**
+ * Splits `xcodebuild -showBuildSettings` output into per-target sections.
+ * Each section starts with "Build settings for action <action> and target <target>:".
+ */
+function splitTargetSections(output: string): string[] {
+  const sections = output.split(/^Build settings for action .+ and target .+:\s*$/m);
+  // First element is preamble (before any target header), skip it
+  return sections.slice(1);
+}
+
+/**
+ * Finds the target section whose PRODUCT_TYPE is `com.apple.product-type.application`
+ * (the main app target). Falls back to first section if no app target found.
+ */
+function findAppTargetSection(output: string): string | undefined {
+  const sections = splitTargetSections(output);
+  if (sections.length === 0) return output; // no sections detected, use full output
+
+  // Prefer the section with PRODUCT_TYPE = com.apple.product-type.application
+  for (const section of sections) {
+    if (/PRODUCT_TYPE\s*=\s*com\.apple\.product-type\.application\b/.test(section)) {
+      return section;
+    }
+  }
+
+  // Fallback: return the first section
+  return sections[0];
+}
+
+/**
  * Extracts bundle identifier from `xcodebuild -showBuildSettings` output.
+ * When output contains multiple targets, picks the application target.
  */
 export function parseBundleId(output: string): string | undefined {
-  const m = output.match(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*(\S+)/);
+  const section = findAppTargetSection(output);
+  if (!section) return undefined;
+  const m = section.match(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*(\S+)/);
   return m?.[1];
 }
 
 /**
  * Extracts the built .app path from build output or build settings.
+ * When output contains multiple targets, picks the application target.
  */
 export function parseAppPath(output: string): string | undefined {
+  const section = findAppTargetSection(output);
+  if (!section) return undefined;
+
   // From build settings: BUILT_PRODUCTS_DIR + FULL_PRODUCT_NAME
-  const dirMatch = output.match(/BUILT_PRODUCTS_DIR\s*=\s*(.+)/);
-  const nameMatch = output.match(/FULL_PRODUCT_NAME\s*=\s*(\S+)/);
+  const dirMatch = section.match(/BUILT_PRODUCTS_DIR\s*=\s*(.+)/);
+  const nameMatch = section.match(/FULL_PRODUCT_NAME\s*=\s*(\S+)/);
 
   if (dirMatch && nameMatch) {
     return `${dirMatch[1].trim()}/${nameMatch[1].trim()}`;
