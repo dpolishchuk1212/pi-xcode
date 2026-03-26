@@ -18,20 +18,14 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
     name: "xcode_test",
     label: "Xcode Test",
     description:
-      "Run unit tests or UI tests for the active Xcode project. Uses the active project, scheme, configuration, and destination. Returns a structured summary of passed/failed tests.",
+      "Run unit tests or UI tests for the active Xcode project. Uses the active project, scheme, configuration, and destination. Returns a structured summary of passed/failed tests. No parameters — always uses active state. Use /project, /scheme, /destination, /configuration commands to change what is tested.",
     promptSnippet: "Run Xcode unit or UI tests and return structured pass/fail results",
     promptGuidelines: [
       "Use xcode_test to run unit or UI tests for the active project.",
-      "Always uses the active project, scheme, configuration, and destination. Use /project, /scheme, /destination, /configuration commands to change them.",
-      "Use onlyTesting to run a specific test class or method, e.g. 'MyAppTests/MyTests/testFoo'.",
+      "Takes no parameters — always uses the active project, scheme, configuration, and destination.",
+      "Use /project, /scheme, /destination, /configuration commands to change what is tested.",
     ],
-    parameters: Type.Object({
-      testPlan: Type.Optional(Type.String({ description: "Test plan to use" })),
-      onlyTesting: Type.Optional(
-        Type.Array(Type.String(), { description: "Run only these tests (e.g. 'MyTests/testFoo')" }),
-      ),
-      skipTesting: Type.Optional(Type.Array(Type.String(), { description: "Skip these tests" })),
-    }),
+    parameters: Type.Object({}),
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       // ── Validate active state ────────────────────────────────────────
@@ -59,9 +53,6 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
         scheme: state.activeScheme.name,
         configuration,
         destination,
-        testPlan: params.testPlan,
-        onlyTesting: params.onlyTesting,
-        skipTesting: params.skipTesting,
       });
 
       debug("full command: xcodebuild", args.join(" "));

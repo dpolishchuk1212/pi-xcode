@@ -499,8 +499,8 @@ export default function (pi: ExtensionAPI) {
 
   // ── /test command ────────────────────────────────────────────────────
   pi.registerCommand("test", {
-    description: "Run tests for the active project. Usage: /test [testFilter] [--plan <testPlan>]",
-    handler: async (args, ctx) => {
+    description: "Run tests for the active project. Uses active scheme, configuration, and destination.",
+    handler: async (_args, ctx) => {
       if (!state.activeProject || !state.activeScheme) {
         ctx.ui.notify("No active project/scheme. Use /project first.", "error");
         return;
@@ -510,19 +510,6 @@ export default function (pi: ExtensionAPI) {
       if (!dest) {
         ctx.ui.notify("No destination available. Use /destination to select one.", "error");
         return;
-      }
-
-      // Parse arguments: /test [testFilter] [--plan <testPlan>]
-      const parts = (args?.trim() ?? "").split(/\s+/).filter(Boolean);
-      let testPlan: string | undefined;
-      const onlyTesting: string[] = [];
-
-      for (let i = 0; i < parts.length; i++) {
-        if (parts[i] === "--plan" && i + 1 < parts.length) {
-          testPlan = parts[++i];
-        } else {
-          onlyTesting.push(parts[i]);
-        }
       }
 
       const xcodeArgs = getXcodebuildProjectArgs(state.activeProject);
@@ -536,18 +523,14 @@ export default function (pi: ExtensionAPI) {
         scheme: state.activeScheme.name,
         configuration,
         destination: destinationStr,
-        testPlan,
-        onlyTesting: onlyTesting.length > 0 ? onlyTesting : undefined,
       });
 
-      const filterLabel = onlyTesting.length > 0 ? ` (${onlyTesting.join(", ")})` : "";
-      const planLabel = testPlan ? ` [plan: ${testPlan}]` : "";
       debug("/test command: xcodebuild", testArgs.join(" "));
       state.appStatus = "testing";
       startSpinner(ctx.cwd, state, ctx.ui);
-      ctx.ui.notify(`Testing ${state.activeScheme.name}${filterLabel}${planLabel} on ${destLabel}...`, "info");
+      ctx.ui.notify(`Testing ${state.activeScheme.name} on ${destLabel}...`, "info");
 
-      const signal = startOperation(state, `Test ${state.activeScheme.name} (${configuration})${filterLabel}${planLabel}`);
+      const signal = startOperation(state, `Test ${state.activeScheme.name} (${configuration})`);
       try {
         const testExec = createTestExec(state);
         const result = await testExec("xcodebuild", testArgs, { signal, timeout: 1_200_000, cwd: xcodeArgs.execCwd });
