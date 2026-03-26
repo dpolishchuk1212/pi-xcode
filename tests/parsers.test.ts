@@ -358,6 +358,13 @@ Build settings for action build and target MyAppTests:
     PRODUCT_NAME = SingleApp`;
     expect(parseBundleId(output)).toBe("com.example.SingleApp");
   });
+
+  it("ignores DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER", () => {
+    const output = `    DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = NO
+    PRODUCT_BUNDLE_IDENTIFIER = com.example.MyApp
+    PRODUCT_TYPE = com.apple.product-type.application`;
+    expect(parseBundleId(output)).toBe("com.example.MyApp");
+  });
 });
 
 describe("parseAppPath", () => {

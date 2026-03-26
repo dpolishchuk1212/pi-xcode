@@ -270,7 +270,7 @@ function findAppTargetSection(output: string): string | undefined {
 export function parseBundleId(output: string): string | undefined {
   const section = findAppTargetSection(output);
   if (!section) return undefined;
-  const m = section.match(/PRODUCT_BUNDLE_IDENTIFIER\s*=\s*(\S+)/);
+  const m = section.match(/(?<![A-Z_])PRODUCT_BUNDLE_IDENTIFIER\s*=\s*(\S+)/);
   return m?.[1];
 }
 
@@ -283,8 +283,8 @@ export function parseAppPath(output: string): string | undefined {
   if (!section) return undefined;
 
   // From build settings: BUILT_PRODUCTS_DIR + FULL_PRODUCT_NAME
-  const dirMatch = section.match(/BUILT_PRODUCTS_DIR\s*=\s*(.+)/);
-  const nameMatch = section.match(/FULL_PRODUCT_NAME\s*=\s*(\S+)/);
+  const dirMatch = section.match(/(?<![A-Z_])BUILT_PRODUCTS_DIR\s*=\s*(.+)/);
+  const nameMatch = section.match(/(?<![A-Z_])FULL_PRODUCT_NAME\s*=\s*(\S+)/);
 
   if (dirMatch && nameMatch) {
     return `${dirMatch[1].trim()}/${nameMatch[1].trim()}`;
