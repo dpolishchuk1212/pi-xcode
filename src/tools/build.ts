@@ -22,6 +22,7 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
     promptSnippet: "Build the active Xcode project returning parsed errors and warnings",
     promptGuidelines: [
       "Use xcode_build to compile the active Xcode project.",
+      "Do NOT use xcode_build for running tests. Use xcode_test instead — it handles building and testing in one step.",
       "Always uses the active project, scheme, configuration, and destination. Use /project, /scheme, /destination, /configuration commands to change them.",
     ],
     parameters: Type.Object({}),

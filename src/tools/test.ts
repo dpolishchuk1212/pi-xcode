@@ -21,7 +21,7 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       "Run unit tests or UI tests for the active Xcode project. Uses the active project, scheme, configuration, and destination. Returns a structured summary of passed/failed tests. No parameters — always uses active state. Use /project, /scheme, /destination, /configuration commands to change what is tested.",
     promptSnippet: "Run Xcode unit or UI tests and return structured pass/fail results",
     promptGuidelines: [
-      "Use xcode_test to run unit or UI tests for the active project.",
+      "Use xcode_test when the user asks to run tests, test, or anything test-related. It builds and tests in one step — do NOT call xcode_build before xcode_test.",
       "Takes no parameters — always uses the active project, scheme, configuration, and destination.",
       "Use /project, /scheme, /destination, /configuration commands to change what is tested.",
     ],
