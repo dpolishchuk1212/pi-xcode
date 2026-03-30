@@ -155,9 +155,7 @@ describe("xcode_build tool", () => {
     const tool = mockPi.getTool("xcode_build");
     const ctx = createMockCtx();
 
-    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(
-      /No active project or scheme/,
-    );
+    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(/No active project or scheme/);
   });
 
   // ── appStatus lifecycle ────────────────────────────────────────────────

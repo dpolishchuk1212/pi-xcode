@@ -59,9 +59,7 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       debug("destination:", destination);
       debug("configuration:", configuration);
 
-      const destLabel = state.activeDestination
-        ? ` on ${formatDestinationLabel(state.activeDestination)}`
-        : "";
+      const destLabel = state.activeDestination ? ` on ${formatDestinationLabel(state.activeDestination)}` : "";
       onUpdate?.({
         content: [{ type: "text", text: `Testing ${state.activeScheme.name} (${configuration})${destLabel}...` }],
         details: undefined,
@@ -70,7 +68,11 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
       state.appStatus = "testing";
       startSpinner(cwd, state, ctx.ui);
 
-      const combinedSignal = startOperation(state, `Test ${state.activeScheme.name} (${configuration})${destLabel}`, signal);
+      const combinedSignal = startOperation(
+        state,
+        `Test ${state.activeScheme.name} (${configuration})${destLabel}`,
+        signal,
+      );
 
       let testResult: TestResult | undefined;
       try {
@@ -97,8 +99,13 @@ export function registerTestTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, st
         debug("--- END RAW OUTPUT ---");
 
         testResult = parseTestResult(combined);
-        debug("parsed result: total=%d passed=%d failed=%d duration=%s",
-          testResult.total, testResult.passed, testResult.failed, testResult.duration.toFixed(3));
+        debug(
+          "parsed result: total=%d passed=%d failed=%d duration=%s",
+          testResult.total,
+          testResult.passed,
+          testResult.failed,
+          testResult.duration.toFixed(3),
+        );
         debug("test cases found:", testResult.cases.length);
         if (testResult.cases.length > 0) {
           for (const tc of testResult.cases) {

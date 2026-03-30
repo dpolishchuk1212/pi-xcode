@@ -59,7 +59,10 @@ export function registerBuildTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
       debug("destination:", destination, "configuration:", configuration);
 
       const destLabel = destinationLabel ? ` for ${destinationLabel}` : "";
-      onUpdate?.({ content: [{ type: "text", text: `Building ${state.activeScheme.name} (${configuration})${destLabel}...` }], details: undefined });
+      onUpdate?.({
+        content: [{ type: "text", text: `Building ${state.activeScheme.name} (${configuration})${destLabel}...` }],
+        details: undefined,
+      });
 
       state.appStatus = "building";
       startSpinner(cwd, state, ctx.ui);

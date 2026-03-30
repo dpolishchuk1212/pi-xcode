@@ -1,10 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import {
-  buildBuildArgs,
-  buildDestinationString,
-  buildShowSettingsArgs,
-} from "../commands.js";
+import { buildBuildArgs, buildDestinationString, buildShowSettingsArgs } from "../commands.js";
 import { formatBuildResult } from "../format.js";
 import { createLogger } from "../log.js";
 import { parseAppPath, parseBuildResult, parseBundleId } from "../parsers.js";
@@ -72,7 +68,11 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
       const destType = destinationTypeLabel(dest);
       debug("destination:", destLabel, "type:", destType, "id:", dest.id);
 
-      const combinedSignal = startOperation(state, `Run ${state.activeScheme.name} (${configuration}) on ${destLabel}`, signal);
+      const combinedSignal = startOperation(
+        state,
+        `Run ${state.activeScheme.name} (${configuration}) on ${destLabel}`,
+        signal,
+      );
 
       try {
         // ── Build ────────────────────────────────────────────────────────
@@ -188,7 +188,10 @@ export function registerRunTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, sta
         // This handles cases where a stale install or corrupted app container prevents launch.
         if (!launchResult.success) {
           debug("launch failed, attempting force-refresh: uninstall → reinstall → relaunch");
-          onUpdate?.({ content: [{ type: "text", text: `Launch failed, retrying with force refresh...` }], details: undefined });
+          onUpdate?.({
+            content: [{ type: "text", text: `Launch failed, retrying with force refresh...` }],
+            details: undefined,
+          });
 
           await terminateApp(exec, dest, bundleId, appPath);
           await uninstallApp(exec, dest, bundleId);

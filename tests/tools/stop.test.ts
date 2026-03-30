@@ -158,11 +158,7 @@ describe("stopActiveOperation", () => {
 
     await stopActiveOperation(exec, "/project", state, ui);
 
-    expect(exec).toHaveBeenCalledWith(
-      "xcrun",
-      ["simctl", "terminate", "SIM-UUID", "all"],
-      expect.any(Object),
-    );
+    expect(exec).toHaveBeenCalledWith("xcrun", ["simctl", "terminate", "SIM-UUID", "all"], expect.any(Object));
   });
 
   it("does not terminate on non-simulator destinations", async () => {
@@ -182,9 +178,7 @@ describe("stopActiveOperation", () => {
 
     // Should NOT call simctl terminate (mac destination)
     const calls = (exec as ReturnType<typeof vi.fn>).mock.calls as [string, string[]][];
-    const terminateCalls = calls.filter(([cmd, args]) =>
-      cmd === "xcrun" && args.includes("terminate"),
-    );
+    const terminateCalls = calls.filter(([cmd, args]) => cmd === "xcrun" && args.includes("terminate"));
     expect(terminateCalls).toHaveLength(0);
   });
 

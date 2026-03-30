@@ -6,6 +6,7 @@ import nodePath from "node:path";
 import { pickBestDestination, pickBestScheme, projectBaseName } from "./auto-select.js";
 import { discoverConfigurations, discoverDestinations, discoverProjects, discoverSchemes } from "./discovery.js";
 import { createLogger } from "./log.js";
+import { loadPersistedState, savePersistedState, snapshotState } from "./persist.js";
 import type { XcodeState } from "./state.js";
 import type { StatusBarUI } from "./status-bar.js";
 import { updateStatusBar } from "./status-bar.js";
@@ -32,7 +33,7 @@ export async function refreshSchemes(exec: ExecFn, state: XcodeState, ui: Status
 
   const schemes = await discoverSchemes(exec, state.activeProject.path);
   state.availableSchemes = schemes;
-  debug("refreshSchemes found", schemes.length, "schemes:", schemes.map(s => s.name).join(", "));
+  debug("refreshSchemes found", schemes.length, "schemes:", schemes.map((s) => s.name).join(", "));
 
   // Auto-select: prefer app schemes matching project name, then any app, then non-test
   state.activeScheme = pickBestScheme(schemes, projectBaseName(state.activeProject.path));
@@ -82,7 +83,7 @@ export async function refreshDestinations(exec: ExecFn, state: XcodeState, _ui: 
   state.availableDestinations = destinations;
   debug("refreshDestinations found", destinations.length, "destinations");
 
-  // Auto-select best destination
+  // Auto-select best destination (caller may override with persisted choice)
   const best = pickBestDestination(destinations);
   state.activeDestination = best;
   debug("auto-selected destination:", best ? `${best.name} (${best.platform}, ${best.id})` : "none");
@@ -105,19 +106,60 @@ export function formatDestinationLabel(d: Destination): string {
  * Picks the first match without prompting. Updates state and status bar.
  */
 export async function autoDetect(exec: ExecFn, cwd: string, state: XcodeState, ui: StatusBarUI): Promise<void> {
+  // ── Load persisted state ─────────────────────────────────────────────
+  const persisted = await loadPersistedState(cwd);
+
   // ── Project ──────────────────────────────────────────────────────────
   const projects = await discoverProjects(exec, cwd, 6);
 
   if (projects.length > 0) {
-    // Already sorted: workspace > project > package — pick first
-    state.activeProject = projects[0];
+    // Restore persisted project if still available, otherwise pick first
+    const restoredProject = persisted.projectPath ? projects.find((p) => p.path === persisted.projectPath) : undefined;
+    state.activeProject = restoredProject ?? projects[0];
 
     // ── Scheme → Destination (cascading) ─────────────────────────────
     await refreshSchemes(exec, state, ui);
+
+    // ── Restore persisted scheme if still available ───────────────────
+    if (persisted.schemeName) {
+      const restoredScheme = state.availableSchemes.find((s) => s.name === persisted.schemeName);
+      if (restoredScheme && restoredScheme.name !== state.activeScheme?.name) {
+        debug("restoring persisted scheme:", restoredScheme.name);
+        state.activeScheme = restoredScheme;
+        // Re-refresh destinations for the restored scheme
+        await refreshDestinations(exec, state, ui);
+      }
+    }
+
+    // ── Restore persisted destination if still available ──────────────
+    if (persisted.destinationId) {
+      const restoredDest = state.availableDestinations.find((d) => d.id === persisted.destinationId);
+      if (restoredDest) {
+        debug("restoring persisted destination:", restoredDest.name, restoredDest.id);
+        state.activeDestination = restoredDest;
+      }
+    }
+
+    // ── Restore persisted configuration if still available ────────────
+    if (persisted.configuration) {
+      if (state.availableConfigurations.includes(persisted.configuration)) {
+        debug("restoring persisted configuration:", persisted.configuration);
+        state.activeConfiguration = persisted.configuration;
+      }
+    }
   }
 
   // ── Update unified status bar ────────────────────────────────────────
   updateStatusBar(cwd, state, ui);
+}
+
+// ── Persist current selections ─────────────────────────────────────────────
+
+/**
+ * Save current selections to disk so they survive across sessions.
+ */
+export async function persistSelections(cwd: string, state: XcodeState): Promise<void> {
+  await savePersistedState(cwd, snapshotState(state));
 }
 
 // ── xcodebuild arg helpers ────────────────────────────────────────────────

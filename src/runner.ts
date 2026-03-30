@@ -112,11 +112,7 @@ export async function ensureDestinationReady(exec: ExecFn, dest: Destination): P
  * when a normal install+launch cycle fails. Errors are silently ignored
  * (app might not be installed).
  */
-export async function uninstallApp(
-  exec: ExecFn,
-  dest: Destination,
-  bundleId: string,
-): Promise<void> {
+export async function uninstallApp(exec: ExecFn, dest: Destination, bundleId: string): Promise<void> {
   const type = classifyDestination(dest);
   debug("uninstallApp bundleId:", bundleId, "type:", type, "destId:", dest.id);
 

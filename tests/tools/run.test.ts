@@ -273,9 +273,7 @@ describe("xcode_run tool", () => {
 
   it("resets appStatus to idle after build failure", async () => {
     const state = stateWithSimulator();
-    const exec = createMockExec([
-      [" build", { stdout: "** BUILD FAILED **\n", code: 65 }],
-    ]);
+    const exec = createMockExec([[" build", { stdout: "** BUILD FAILED **\n", code: 65 }]]);
 
     registerRunTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_run");
@@ -313,10 +311,6 @@ describe("xcode_run tool", () => {
     const tool = mockPi.getTool("xcode_run");
     const ctx = createMockCtx();
 
-    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(
-      /No active project or scheme/,
-    );
+    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(/No active project or scheme/);
   });
-
-
 });

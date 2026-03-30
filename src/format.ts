@@ -1,5 +1,5 @@
-import type { BuildResult, TestResult } from "./types.js";
 import { parseBuildIssues } from "./parsers.js";
+import type { BuildResult, TestResult } from "./types.js";
 
 /**
  * Format a build result into a human-readable string for the LLM.

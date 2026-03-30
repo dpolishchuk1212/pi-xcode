@@ -17,9 +17,7 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
     label: "Xcode Clean",
     description: "Clean build artifacts for the active Xcode project or workspace.",
     promptSnippet: "Clean Xcode build artifacts for the active project",
-    promptGuidelines: [
-      "Use xcode_clean to remove build artifacts for the active project. Takes no parameters.",
-    ],
+    promptGuidelines: ["Use xcode_clean to remove build artifacts for the active project. Takes no parameters."],
     parameters: Type.Object({}),
 
     async execute(_toolCallId, _params, signal, onUpdate, ctx) {
@@ -28,7 +26,14 @@ export function registerCleanTool(pi: ExtensionAPI, exec: ExecFn, cwd: string, s
         throw new Error("No active project. Use /project to select one.");
       }
 
-      debug("active project:", state.activeProject.path, "type:", state.activeProject.type, "scheme:", state.activeScheme?.name);
+      debug(
+        "active project:",
+        state.activeProject.path,
+        "type:",
+        state.activeProject.type,
+        "scheme:",
+        state.activeScheme?.name,
+      );
 
       // ── Stop any active operation first ──────────────────────────────
       if (state.appStatus !== "idle") {

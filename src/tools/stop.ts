@@ -51,7 +51,14 @@ export async function stopActiveOperation(
   const operationLabel = state.activeOperationLabel;
   const hadActiveOperation = !!state.activeAbortController;
   const previousStatus = state.appStatus;
-  debug("stopping — status:", previousStatus, "operation:", operationLabel ?? "none", "hasAbortController:", hadActiveOperation);
+  debug(
+    "stopping — status:",
+    previousStatus,
+    "operation:",
+    operationLabel ?? "none",
+    "hasAbortController:",
+    hadActiveOperation,
+  );
 
   // 1. Abort via AbortController (signals the exec calls)
   if (state.activeAbortController) {

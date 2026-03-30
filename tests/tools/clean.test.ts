@@ -78,9 +78,7 @@ describe("xcode_clean tool", () => {
     state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
     state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
 
-    const exec = createMockExec([
-      ["clean", { stdout: "** CLEAN SUCCEEDED **\n", code: 0 }],
-    ]);
+    const exec = createMockExec([["clean", { stdout: "** CLEAN SUCCEEDED **\n", code: 0 }]]);
 
     registerCleanTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_clean");
@@ -97,9 +95,7 @@ describe("xcode_clean tool", () => {
     state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
     state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
 
-    const exec = createMockExec([
-      ["clean", { stdout: "", stderr: "error: clean failed", code: 65 }],
-    ]);
+    const exec = createMockExec([["clean", { stdout: "", stderr: "error: clean failed", code: 65 }]]);
 
     registerCleanTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_clean");
@@ -116,9 +112,7 @@ describe("xcode_clean tool", () => {
     state.activeProject = { path: "/project/Package.swift", type: "package" };
     state.activeScheme = { name: "MyLib", project: "/project/Package.swift" };
 
-    const exec = createMockExec([
-      ["package clean", { code: 0 }],
-    ]);
+    const exec = createMockExec([["package clean", { code: 0 }]]);
 
     registerCleanTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_clean");
@@ -128,11 +122,7 @@ describe("xcode_clean tool", () => {
 
     expect(result.details.success).toBe(true);
     expect(result.details.command).toBe("swift package clean");
-    expect(exec).toHaveBeenCalledWith(
-      "swift",
-      ["package", "clean"],
-      expect.objectContaining({ cwd: "/project" }),
-    );
+    expect(exec).toHaveBeenCalledWith("swift", ["package", "clean"], expect.objectContaining({ cwd: "/project" }));
   });
 
   it("uses workspace flag for workspace projects", async () => {
@@ -140,9 +130,7 @@ describe("xcode_clean tool", () => {
     state.activeProject = { path: "/project/App.xcworkspace", type: "workspace" };
     state.activeScheme = { name: "App", project: "/project/App.xcworkspace" };
 
-    const exec = createMockExec([
-      ["clean", { code: 0 }],
-    ]);
+    const exec = createMockExec([["clean", { code: 0 }]]);
 
     registerCleanTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_clean");
@@ -164,9 +152,7 @@ describe("xcode_clean tool", () => {
     const tool = mockPi.getTool("xcode_clean");
     const ctx = createMockCtx();
 
-    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(
-      /No active project/,
-    );
+    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(/No active project/);
   });
 
   it("cleans without scheme when only project is set", async () => {
@@ -192,12 +178,9 @@ describe("xcode_clean tool", () => {
     state.activeProject = { path: "/project/App.xcodeproj", type: "project" };
     state.activeScheme = { name: "App", project: "/project/App.xcodeproj" };
 
-    const exec = createCapturingExec(
-      [["clean", { code: 0 }]],
-      () => {
-        statusDuringClean = state.appStatus;
-      },
-    );
+    const exec = createCapturingExec([["clean", { code: 0 }]], () => {
+      statusDuringClean = state.appStatus;
+    });
 
     registerCleanTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_clean");

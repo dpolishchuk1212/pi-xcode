@@ -7,14 +7,7 @@ import nodePath from "node:path";
 import { buildListArgs, buildShowDestinationsArgs, buildSimctlListArgs } from "./commands.js";
 import { createLogger } from "./log.js";
 import { parseConfigurationList, parseDestinations, parseSchemeList, parseSimulatorList } from "./parsers.js";
-import type {
-  Destination,
-  ExecFn,
-  SchemeProductType,
-  Simulator,
-  XcodeProject,
-  XcodeScheme,
-} from "./types.js";
+import type { Destination, ExecFn, SchemeProductType, Simulator, XcodeProject, XcodeScheme } from "./types.js";
 
 const debug = createLogger("discovery");
 
@@ -84,8 +77,15 @@ export async function discoverProjects(exec: ExecFn, cwd: string, maxDepth: numb
     return a.path.localeCompare(b.path);
   });
 
-  debug("discoverProjects found", projects.length, "in", cwd, "depth:", maxDepth,
-    projects.map(p => `${p.type}:${nodePath.basename(p.path)}`).join(", "));
+  debug(
+    "discoverProjects found",
+    projects.length,
+    "in",
+    cwd,
+    "depth:",
+    maxDepth,
+    projects.map((p) => `${p.type}:${nodePath.basename(p.path)}`).join(", "),
+  );
   return projects;
 }
 
@@ -115,8 +115,12 @@ export async function discoverSchemes(exec: ExecFn, projectPath: string): Promis
   // Enrich schemes with product type from .xcscheme files
   await enrichSchemesWithProductType(schemes, projectPath);
 
-  debug("discoverSchemes found", schemes.length, "schemes:",
-    schemes.map(s => `${s.name}(${s.productType ?? "?"})`).join(", "));
+  debug(
+    "discoverSchemes found",
+    schemes.length,
+    "schemes:",
+    schemes.map((s) => `${s.name}(${s.productType ?? "?"})`).join(", "),
+  );
   return schemes;
 }
 

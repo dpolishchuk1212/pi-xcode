@@ -110,7 +110,8 @@ export function parseTestResult(output: string): TestResult {
   const duration = summaryMatch ? parseFloat(summaryMatch[3]) : cases.reduce((s, c) => s + c.duration, 0);
 
   // Detect build failure that prevented tests from running
-  const buildFailed = /\*\*\s*TEST FAILED\s*\*\*/.test(output) || /Testing cancelled because the build failed/.test(output);
+  const buildFailed =
+    /\*\*\s*TEST FAILED\s*\*\*/.test(output) || /Testing cancelled because the build failed/.test(output);
   const success = failed === 0 && !buildFailed;
 
   return {

@@ -19,11 +19,13 @@ import {
 } from "./commands.js";
 import { discoverProjects } from "./discovery.js";
 import { formatBuildResult } from "./format.js";
+import { createLogger } from "./log.js";
 import { parseAppPath, parseBuildResult, parseBundleId, parseTestResult } from "./parsers.js";
 import {
   autoDetect,
   formatDestinationLabel,
   getXcodebuildProjectArgs,
+  persistSelections,
   refreshDestinations,
   refreshSchemes,
 } from "./resolve.js";
@@ -44,8 +46,6 @@ import { registerRunTool } from "./tools/run.js";
 import { registerStopTool, stopActiveOperation } from "./tools/stop.js";
 import { registerTestTool } from "./tools/test.js";
 import type { ExecFn, SchemeProductType } from "./types.js";
-
-import { createLogger } from "./log.js";
 
 const debug = createLogger("main");
 
@@ -167,6 +167,8 @@ export default function (pi: ExtensionAPI) {
       const configInfo = state.activeConfiguration ? ` → config: ${state.activeConfiguration}` : "";
       const destInfo = state.activeDestination ? ` → dest: ${formatDestinationLabel(state.activeDestination)}` : "";
       ctx.ui.notify(`Active project: ${relativePath}${schemeInfo}${configInfo}${destInfo}`, "info");
+
+      await persistSelections(cwd, state);
     },
   });
 
@@ -221,6 +223,8 @@ export default function (pi: ExtensionAPI) {
 
       const destInfo = state.activeDestination ? ` → dest: ${formatDestinationLabel(state.activeDestination)}` : "";
       ctx.ui.notify(`Active scheme: ${selectedScheme.name}${destInfo}`, "info");
+
+      await persistSelections(ctx.cwd, state);
     },
   });
 
@@ -272,6 +276,8 @@ export default function (pi: ExtensionAPI) {
       state.activeDestination = selected;
       updateStatusBar(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Run destination: ${formatDestinationLabel(selected)}`, "info");
+
+      await persistSelections(ctx.cwd, state);
     },
   });
 
@@ -303,6 +309,8 @@ export default function (pi: ExtensionAPI) {
       state.activeConfiguration = result;
       updateStatusBar(ctx.cwd, state, ctx.ui);
       ctx.ui.notify(`Build configuration: ${result}`, "info");
+
+      await persistSelections(ctx.cwd, state);
     },
   });
 
@@ -677,11 +685,18 @@ export default function (pi: ExtensionAPI) {
     // Auto-detect project → scheme → destination silently
     debug("auto-detecting project in:", sessionCwd);
     await autoDetect(exec, sessionCwd, state, ctx.ui);
-    debug("auto-detect result:",
-      "project:", state.activeProject?.path ?? "none",
-      "scheme:", state.activeScheme?.name ?? "none",
-      "destination:", state.activeDestination ? `${state.activeDestination.name} (${state.activeDestination.platform})` : "none",
-      "configuration:", state.activeConfiguration ?? "none",
+    // Persist after auto-detect so first-run defaults are saved too
+    await persistSelections(sessionCwd, state);
+    debug(
+      "auto-detect result:",
+      "project:",
+      state.activeProject?.path ?? "none",
+      "scheme:",
+      state.activeScheme?.name ?? "none",
+      "destination:",
+      state.activeDestination ? `${state.activeDestination.name} (${state.activeDestination.platform})` : "none",
+      "configuration:",
+      state.activeConfiguration ?? "none",
     );
   });
 }

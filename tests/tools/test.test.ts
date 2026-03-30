@@ -99,9 +99,7 @@ describe("xcode_test tool", () => {
 
   it("runs tests and returns all-passing result", async () => {
     const state = stateWithSimulator();
-    const exec = createMockExec([
-      ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
-    ]);
+    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
 
     registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
@@ -118,9 +116,7 @@ describe("xcode_test tool", () => {
 
   it("runs tests and returns failures", async () => {
     const state = stateWithSimulator();
-    const exec = createMockExec([
-      ["test", { stdout: MIXED_OUTPUT, code: 65 }],
-    ]);
+    const exec = createMockExec([["test", { stdout: MIXED_OUTPUT, code: 65 }]]);
 
     registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
@@ -139,21 +135,13 @@ describe("xcode_test tool", () => {
 
   it("passes onlyTesting filter to xcodebuild", async () => {
     const state = stateWithSimulator();
-    const exec = createMockExec([
-      ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
-    ]);
+    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
 
     registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
     const ctx = createMockCtx();
 
-    await tool.execute(
-      "call-1",
-      { onlyTesting: ["AppTests/testA"] },
-      undefined,
-      vi.fn(),
-      ctx,
-    );
+    await tool.execute("call-1", { onlyTesting: ["AppTests/testA"] }, undefined, vi.fn(), ctx);
 
     expect(exec).toHaveBeenCalledWith(
       "xcodebuild",
@@ -164,21 +152,13 @@ describe("xcode_test tool", () => {
 
   it("passes skipTesting filter to xcodebuild", async () => {
     const state = stateWithSimulator();
-    const exec = createMockExec([
-      ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
-    ]);
+    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
 
     registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
     const ctx = createMockCtx();
 
-    await tool.execute(
-      "call-1",
-      { skipTesting: ["SlowTests"] },
-      undefined,
-      vi.fn(),
-      ctx,
-    );
+    await tool.execute("call-1", { skipTesting: ["SlowTests"] }, undefined, vi.fn(), ctx);
 
     expect(exec).toHaveBeenCalledWith(
       "xcodebuild",
@@ -189,21 +169,13 @@ describe("xcode_test tool", () => {
 
   it("passes testPlan to xcodebuild", async () => {
     const state = stateWithSimulator();
-    const exec = createMockExec([
-      ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
-    ]);
+    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
 
     registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
     const ctx = createMockCtx();
 
-    await tool.execute(
-      "call-1",
-      { testPlan: "SmokePlan" },
-      undefined,
-      vi.fn(),
-      ctx,
-    );
+    await tool.execute("call-1", { testPlan: "SmokePlan" }, undefined, vi.fn(), ctx);
 
     expect(exec).toHaveBeenCalledWith(
       "xcodebuild",
@@ -213,9 +185,7 @@ describe("xcode_test tool", () => {
   });
 
   it("always uses active project and scheme from state", async () => {
-    const exec = createMockExec([
-      ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
-    ]);
+    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
 
     const state = stateWithSimulator();
     registerTestTool(mockPi as any, exec, "/project", state);
@@ -238,9 +208,7 @@ describe("xcode_test tool", () => {
     const tool = mockPi.getTool("xcode_test");
     const ctx = createMockCtx();
 
-    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(
-      /No active project or scheme/,
-    );
+    await expect(tool.execute("call-1", {}, undefined, vi.fn(), ctx)).rejects.toThrow(/No active project or scheme/);
   });
 
   // ── appStatus lifecycle ──────────────────────────────────────────────────
@@ -249,12 +217,9 @@ describe("xcode_test tool", () => {
     let statusDuringTest: XcodeState["appStatus"] | undefined;
     const state = stateWithSimulator();
 
-    const exec = createCapturingExec(
-      [["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]],
-      () => {
-        statusDuringTest = state.appStatus;
-      },
-    );
+    const exec = createCapturingExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]], () => {
+      statusDuringTest = state.appStatus;
+    });
 
     registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
@@ -266,9 +231,7 @@ describe("xcode_test tool", () => {
 
   it("resets appStatus to idle after tests complete", async () => {
     const state = stateWithSimulator();
-    const exec = createMockExec([
-      ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
-    ]);
+    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
 
     registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
@@ -283,9 +246,7 @@ describe("xcode_test tool", () => {
 
   it("resets appStatus to idle after test failures", async () => {
     const state = stateWithSimulator();
-    const exec = createMockExec([
-      ["test", { stdout: MIXED_OUTPUT, code: 65 }],
-    ]);
+    const exec = createMockExec([["test", { stdout: MIXED_OUTPUT, code: 65 }]]);
 
     registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
@@ -299,9 +260,7 @@ describe("xcode_test tool", () => {
 
   it("includes command in result details", async () => {
     const state = stateWithSimulator();
-    const exec = createMockExec([
-      ["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }],
-    ]);
+    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
 
     registerTestTool(mockPi as any, exec, "/project", state);
     const tool = mockPi.getTool("xcode_test");
