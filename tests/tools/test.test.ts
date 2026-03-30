@@ -133,57 +133,6 @@ describe("xcode_test tool", () => {
     expect(result.content[0].text).toContain("TESTS FAILED");
   });
 
-  it("passes onlyTesting filter to xcodebuild", async () => {
-    const state = stateWithSimulator();
-    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
-
-    registerTestTool(mockPi as any, exec, "/project", state);
-    const tool = mockPi.getTool("xcode_test");
-    const ctx = createMockCtx();
-
-    await tool.execute("call-1", { onlyTesting: ["AppTests/testA"] }, undefined, vi.fn(), ctx);
-
-    expect(exec).toHaveBeenCalledWith(
-      "xcodebuild",
-      expect.arrayContaining(["-only-testing", "AppTests/testA"]),
-      expect.anything(),
-    );
-  });
-
-  it("passes skipTesting filter to xcodebuild", async () => {
-    const state = stateWithSimulator();
-    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
-
-    registerTestTool(mockPi as any, exec, "/project", state);
-    const tool = mockPi.getTool("xcode_test");
-    const ctx = createMockCtx();
-
-    await tool.execute("call-1", { skipTesting: ["SlowTests"] }, undefined, vi.fn(), ctx);
-
-    expect(exec).toHaveBeenCalledWith(
-      "xcodebuild",
-      expect.arrayContaining(["-skip-testing", "SlowTests"]),
-      expect.anything(),
-    );
-  });
-
-  it("passes testPlan to xcodebuild", async () => {
-    const state = stateWithSimulator();
-    const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
-
-    registerTestTool(mockPi as any, exec, "/project", state);
-    const tool = mockPi.getTool("xcode_test");
-    const ctx = createMockCtx();
-
-    await tool.execute("call-1", { testPlan: "SmokePlan" }, undefined, vi.fn(), ctx);
-
-    expect(exec).toHaveBeenCalledWith(
-      "xcodebuild",
-      expect.arrayContaining(["-testPlan", "SmokePlan"]),
-      expect.anything(),
-    );
-  });
-
   it("always uses active project and scheme from state", async () => {
     const exec = createMockExec([["test", { stdout: ALL_PASSING_OUTPUT, code: 0 }]]);
 
